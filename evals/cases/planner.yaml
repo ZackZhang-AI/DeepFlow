@@ -1,0 +1,104 @@
+# Planner Agent Eval Cases
+# 每个 case 包含 input 和 expected 检查项
+
+cases:
+  # ============================================================
+  # 标准研究主题
+  # ============================================================
+
+  - name: "AI Agent 市场趋势"
+    input: "分析 2026 年 AI Agent 市场的发展趋势"
+    expected:
+      min_steps: 3
+      max_steps: 5
+      should_cover:
+        - "市场规模"
+        - "趋势"
+
+  - name: "新能源汽车行业分析"
+    input: "分析中国新能源汽车行业的竞争格局"
+    expected:
+      min_steps: 3
+      max_steps: 5
+      should_cover:
+        - "新能源"
+        - "竞争"
+
+  - name: "量子计算技术进展"
+    input: "量子计算技术的最新进展和应用前景"
+    expected:
+      min_steps: 2
+      max_steps: 5
+      should_cover:
+        - "量子计算"
+
+  - name: "大模型技术路线"
+    input: "分析当前大语言模型的技术路线差异"
+    expected:
+      min_steps: 3
+      max_steps: 5
+      should_cover:
+        - "大语言模型"  # or "技术路线"
+
+  - name: "RAG 技术应用现状"
+    input: "RAG 技术在企业中的应用现状和最佳实践"
+    expected:
+      min_steps: 2
+      max_steps: 5
+      should_cover:
+        - "RAG"
+
+  # ============================================================
+  # 简单问题
+  # ============================================================
+
+  - name: "简单常识问题"
+    input: "什么是机器学习？"
+    expected:
+      min_steps: 2
+      max_steps: 5
+      has_enough_context: true
+
+  # ============================================================
+  # 复杂主题
+  # ============================================================
+
+  - name: "综合商业分析"
+    input: "分析从 2024 年到 2026 年全球 SaaS 行业的变化，包括市场规模、主要玩家、定价模式和技术趋势"
+    expected:
+      min_steps: 3
+      max_steps: 5
+      should_cover:
+        - "SaaS"
+        - "市场"
+
+  # ============================================================
+  # 英文主题
+  # ============================================================
+
+  - name: "英文研究主题"
+    input: "Analyze the impact of generative AI on software development industry in 2026"
+    expected:
+      min_steps: 2
+      max_steps: 5
+
+  # ============================================================
+  # 边界情况
+  # ============================================================
+
+  - name: "非常具体的问题"
+    input: "比亚迪 2025 年 Q4 财报分析"
+    expected:
+      min_steps: 2
+      max_steps: 5
+      should_cover:
+        - "比亚迪"
+
+  - name: "技术对比问题"
+    input: "React vs Vue 2026 年生态对比"
+    expected:
+      min_steps: 2
+      max_steps: 5
+      should_cover:
+        - "React"
+        - "Vue"

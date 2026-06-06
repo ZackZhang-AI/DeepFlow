@@ -1,0 +1,26 @@
+# DeepFlow CLI 依赖
+
+# LLM API
+openai>=1.30.0
+
+# 搜索
+tavily-python>=0.3.0
+
+# HTTP
+httpx>=0.27.0
+
+# 数据模型
+pydantic>=2.0.0
+
+# 环境变量
+python-dotenv>=1.0.0
+
+# CLI 美化
+rich>=13.0.0
+
+# 网页抓取 (内容提取)
+readability-lxml>=0.8.0
+lxml>=5.0.0
+
+# 异步支持
+aiofiles>=23.0.0

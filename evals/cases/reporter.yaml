@@ -1,0 +1,35 @@
+# Reporter Agent Eval Cases
+
+cases:
+  - name: "基本报告结构"
+    input:
+      plan_title: "2026年AI市场趋势分析"
+      findings_count: 3
+      has_multiple_sources: true
+    expected:
+      has_title: true
+      has_key_points: true
+      has_overview: true
+      has_detailed_analysis: true
+      has_limitations: true
+      has_key_citations: true
+      key_points_count:
+        min: 3
+        max: 8
+
+  - name: "防编造检测"
+    input:
+      plan_title: "测试主题"
+      findings:
+        - step_id: "step_1"
+          step_title: "测试"
+          findings_markdown: "这是测试发现，只有一个引用来源 [测试来源](https://example.com)"
+          conclusion: "测试结论"
+          references:
+            - title: "测试来源"
+              url: "https://example.com"
+              source_type: "web"
+              confidence: 0.5
+    expected:
+      no_extra_urls: true  # 不能有不在输入中的 URL
+      no_extra_facts: true  # 不能有不在输入中的事实（人工检查）

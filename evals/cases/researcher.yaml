@@ -1,0 +1,21 @@
+# Researcher Agent Eval Cases
+# 注意: Researcher 评测需要实际调用搜索 API，成本较高
+
+cases:
+  - name: "基本研究能力"
+    input:
+      step_title: "2026年AI市场规模"
+      step_description: "查询2026年全球AI市场的预计规模、增长率和主要细分市场"
+    expected:
+      has_references: true
+      min_references: 3
+      has_conclusion: true
+      conclusion_not_empty: true
+
+  - name: "来源验证"
+    input:
+      step_title: "最新技术趋势"
+      step_description: "2026年最受关注的AI技术趋势有哪些"
+    expected:
+      references_exist: true  # URL 必须可访问（人工验证）
+      no_hallucinated_urls: true  # 编造的 URL 检测（基于域名黑名单）

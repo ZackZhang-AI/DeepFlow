@@ -1,0 +1,30 @@
+# 环境变量
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 输出
+output/
+runs/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# 数据库
+*.db
+
+# Node (前端)
+node_modules/
+.next/
+frontend/.next/
