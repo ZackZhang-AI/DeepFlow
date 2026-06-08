@@ -20,7 +20,18 @@ from contextlib import asynccontextmanager
 
 from backend.app.config import CORS_ORIGINS
 from backend.app.core.db import init_db
-from backend.app.api.routes import research, events, report, artifacts
+from backend.app.api.routes import (
+    artifacts,
+    auth,
+    events,
+    knowledge,
+    report,
+    research,
+    templates,
+    tools,
+    workflows,
+    workspaces,
+)
 
 
 @asynccontextmanager
@@ -52,6 +63,14 @@ app.include_router(research.router)
 app.include_router(events.router)
 app.include_router(report.router)
 app.include_router(artifacts.router)
+app.include_router(knowledge.router)
+app.include_router(auth.router)
+app.include_router(tools.router)
+app.include_router(workspaces.router)
+app.include_router(workspaces.share_router)
+app.include_router(workspaces.public_router)
+app.include_router(templates.router)
+app.include_router(workflows.router)
 
 
 @app.get("/api/health")
