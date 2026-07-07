@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.core.auth import create_bearer_token, hash_password, require_login, verify_password
 from backend.app.core.db import create_user, get_user_by_username
+from backend.app.core.runtime_config import public_registration_allowed
 from backend.app.models.schemas import AuthResponse, LoginRequest, RegisterRequest, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -14,6 +15,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(req: RegisterRequest):
+    if not public_registration_allowed():
+        raise HTTPException(status_code=403, detail="Public registration is disabled for this demo")
+
     username = req.username.strip()
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="Username must be at least 3 characters")

@@ -12,6 +12,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.app.core import db
+from backend.app.core.runtime_config import demo_credentials
 
 LOCAL_DEFAULT_USER_ID = "local_default_user"
 TOKEN_TTL_DAYS = 30
@@ -85,6 +86,22 @@ def require_resource_owner(resource: Optional[dict], user: dict, owner_field: st
     if resource.get(owner_field) != user["user_id"]:
         raise HTTPException(status_code=404, detail="Resource not found")
     return resource
+
+
+def ensure_demo_user() -> None:
+    credentials = demo_credentials()
+    if credentials is None:
+        return
+
+    username, password = credentials
+    if db.get_user_by_username(username):
+        return
+
+    db.create_user(
+        user_id="demo_user",
+        username=username,
+        password_hash=hash_password(password),
+    )
 
 
 def _hash_token(token: str) -> str:

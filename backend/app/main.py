@@ -19,6 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from backend.app.config import CORS_ORIGINS
+from backend.app.core import db
+from backend.app.core.auth import ensure_demo_user
 from backend.app.core.db import init_db
 from backend.app.api.routes import (
     artifacts,
@@ -38,7 +40,8 @@ from backend.app.api.routes import (
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化数据库"""
     init_db()
-    print(f"Database initialized at: {Path(__file__).resolve().parent.parent / 'deepflow.db'}")
+    ensure_demo_user()
+    print(f"Database initialized at: {db.get_db_path()}")
     yield
 
 

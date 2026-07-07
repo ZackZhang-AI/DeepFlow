@@ -3,16 +3,25 @@
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from backend.app.config import BACKEND_DIR
+from backend.app.core.runtime_config import database_path
 
-DB_PATH = BACKEND_DIR / "deepflow.db"
+DEFAULT_DB_PATH = BACKEND_DIR / "deepflow.db"
+DB_PATH: Path | None = None
 LOCAL_DEFAULT_USER_ID = "local_default_user"
 
 
+def get_db_path() -> Path:
+    path = Path(DB_PATH) if DB_PATH is not None else database_path(DEFAULT_DB_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(get_db_path()), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

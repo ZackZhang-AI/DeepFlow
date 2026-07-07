@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
+from backend.app.core.rate_limit import check_rate_limit
+from backend.app.core.runtime_config import sandbox_tool_disabled, tool_test_rate_limit
 from backend.app.services.tools import get_tool, list_tools, set_tool_enabled, test_tool
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
@@ -36,4 +38,7 @@ async def update_tool(tool_id: str, req: ToolToggleRequest, user: dict = Depends
 async def test_registered_tool(tool_id: str, req: ToolTestRequest, user: dict = Depends(require_login)):
     if get_tool(tool_id) is None:
         raise HTTPException(status_code=404, detail="Tool not found")
+    if tool_id == "python_sandbox" and sandbox_tool_disabled():
+        raise HTTPException(status_code=403, detail="Python sandbox tool testing is disabled for this demo")
+    check_rate_limit("tools.test", user["user_id"], tool_test_rate_limit())
     return await test_tool(tool_id, req.input, user)

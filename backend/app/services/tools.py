@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from backend.app.core.runtime_config import sandbox_tool_disabled
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
 from cli.tools.sandbox import execute_python
@@ -63,6 +64,12 @@ _TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
 _enabled_tools: dict[str, bool] = {tool_id: True for tool_id in _TOOL_DEFINITIONS}
 
 
+def _tool_enabled(tool_id: str) -> bool:
+    if tool_id == "python_sandbox" and sandbox_tool_disabled():
+        return False
+    return _enabled_tools.get(tool_id, False)
+
+
 def list_tools() -> list[dict[str, Any]]:
     return [
         {
@@ -70,7 +77,7 @@ def list_tools() -> list[dict[str, Any]]:
             "name": tool.name,
             "description": tool.description,
             "category": tool.category,
-            "enabled": _enabled_tools.get(tool.tool_id, False),
+            "enabled": _tool_enabled(tool.tool_id),
             "input_schema": tool.input_schema,
         }
         for tool in _TOOL_DEFINITIONS.values()
@@ -86,7 +93,7 @@ def get_tool(tool_id: str) -> dict[str, Any] | None:
         "name": tool.name,
         "description": tool.description,
         "category": tool.category,
-        "enabled": _enabled_tools.get(tool.tool_id, False),
+        "enabled": _tool_enabled(tool.tool_id),
         "input_schema": tool.input_schema,
     }
 
@@ -102,7 +109,7 @@ async def test_tool(tool_id: str, input_data: dict[str, Any], user: dict) -> dic
     tool = _TOOL_DEFINITIONS.get(tool_id)
     if tool is None:
         raise ValueError("Tool not found")
-    if not _enabled_tools.get(tool_id, False):
+    if not _tool_enabled(tool_id):
         return _result(False, "", "", 0.0, "Tool is disabled")
 
     started = time.perf_counter()

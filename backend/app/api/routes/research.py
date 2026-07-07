@@ -18,7 +18,10 @@ from backend.app.models.schemas import (
 from backend.app.core.db import create_task, get_task, update_task, list_tasks, list_agent_runs
 from backend.app.core.auth import require_login
 from backend.app.core.events import get_event_manager, remove_event_manager
+from backend.app.core.rate_limit import check_rate_limit
+from backend.app.core.runtime_config import research_task_rate_limit
 from backend.app.services.research import execute_research_task, generate_research_plan_task
+from cli.config import Config
 
 router = APIRouter(prefix="/api/research-tasks", tags=["research"])
 
@@ -30,6 +33,8 @@ async def create_research_task(
     user: dict = Depends(require_login),
 ):
     """创建研究任务并启动后台计划生成，等待用户确认后执行。"""
+    check_rate_limit("research.create", user["user_id"], research_task_rate_limit())
+    max_steps = min(req.max_steps, Config.MAX_STEPS)
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
     # 创建数据库记录
@@ -66,7 +71,7 @@ async def create_research_task(
         task_id=task_id,
         topic=req.topic,
         locale=req.locale,
-        max_steps=req.max_steps,
+        max_steps=max_steps,
     )
 
     return ResearchTaskResponse(

@@ -9,6 +9,8 @@ from backend.app.core.db import (
     list_knowledge_documents,
 )
 from backend.app.core.auth import require_login
+from backend.app.core.rate_limit import check_rate_limit
+from backend.app.core.runtime_config import knowledge_upload_max_bytes, knowledge_write_rate_limit
 from backend.app.models.schemas import KnowledgeDocumentRequest
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import (
@@ -28,6 +30,7 @@ async def list_documents(limit: int = 50, offset: int = 0, user: dict = Depends(
 
 @router.post("")
 async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(require_login)):
+    check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
     try:
         doc = ingest_text_document(
             title=req.title,
@@ -46,6 +49,9 @@ async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(re
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...), user: dict = Depends(require_login)):
     raw = await file.read()
+    if len(raw) > knowledge_upload_max_bytes():
+        raise HTTPException(status_code=413, detail="Uploaded knowledge document is too large for this demo")
+    check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
     try:
         doc = ingest_uploaded_document(file.filename or "knowledge.txt", raw, user_id=user["user_id"])
     except ValueError as exc:

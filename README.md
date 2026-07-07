@@ -217,3 +217,39 @@ DeepFlow/
 ## License
 
 MIT
+
+## Demo Deployment Notes
+
+This repo is prepared for a controlled job-search demo deployment:
+
+- Frontend: deploy `frontend/` to Vercel.
+- Backend: deploy the repository to Render as a Web Service.
+- Render start command:
+  ```bash
+  python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+  ```
+- Render persistent disk: mount a disk and set `DEEPFLOW_DB_PATH=/var/data/deepflow.db`.
+- Vercel environment: set `NEXT_PUBLIC_API_URL` to the Render backend URL.
+- Render environment: set `CORS_ORIGINS` to the exact Vercel origin.
+
+Recommended public demo settings:
+
+```env
+ALLOW_PUBLIC_REGISTRATION=false
+DEMO_USERNAME=interviewer
+DEMO_PASSWORD=<strong-demo-password>
+DISABLE_SANDBOX_TOOL=true
+RATE_LIMIT_WINDOW_SECONDS=3600
+RESEARCH_TASK_RATE_LIMIT_PER_HOUR=10
+TOOL_TEST_RATE_LIMIT_PER_HOUR=10
+KNOWLEDGE_WRITE_RATE_LIMIT_PER_HOUR=10
+ARTIFACT_RATE_LIMIT_PER_HOUR=10
+KNOWLEDGE_UPLOAD_MAX_BYTES=5242880
+```
+
+Demo boundaries:
+
+- SQLite is intentionally kept for the demo; use PostgreSQL/pgvector before operating this as a real multi-user product.
+- Public registration should stay disabled for interview/demo links.
+- Python sandbox testing should stay disabled unless the backend runs it with container isolation.
+- Keep API keys in platform environment variables only; never commit `.env`.

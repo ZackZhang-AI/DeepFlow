@@ -11,6 +11,8 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from backend.app.models.schemas import ReportResponse, RewriteRequest, SaveReportRequest
 from backend.app.core.auth import require_login
+from backend.app.core.rate_limit import check_rate_limit
+from backend.app.core.runtime_config import artifact_rate_limit
 from backend.app.core.db import (
     get_report_version,
     get_task,
@@ -157,6 +159,7 @@ async def download_report(task_id: str, format: str = Query("markdown", pattern=
 
 @router.post("/{task_id}/rewrite")
 async def rewrite_report_section(task_id: str, req: RewriteRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """按用户指令重写报告或某个章节，并保存版本"""
     task = get_task(task_id, user_id=user["user_id"])
     if task is None:

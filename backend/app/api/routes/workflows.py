@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
 from backend.app.core.db import get_connection
+from backend.app.core.runtime_config import sandbox_tool_disabled
 from backend.app.services.tools import test_tool
 from cli.tools.sandbox import execute_python
 
@@ -230,13 +231,19 @@ async def _run_node(
         elif node_type == "Researcher":
             output = {"summary": config.get("summary") or f"Research node received topic: {workflow_input.get('topic', '')}"}
         elif node_type == "Coder":
-            code = str(config.get("code") or workflow_input.get("code") or "print('DeepFlow workflow coder node')")
-            result = await execute_python(code, timeout=int(config.get("timeout") or 10))
-            output = {"stdout": result.stdout, "stderr": result.stderr, "success": result.success}
-            if not result.success:
+            if sandbox_tool_disabled():
                 status = "failed"
-                error = result.error or result.stderr
-            tool_calls.append({"tool": "python_sandbox", "elapsed_seconds": result.elapsed_seconds, "success": result.success})
+                error = "Python sandbox is disabled for this demo"
+                output = {"stdout": "", "stderr": error, "success": False}
+                tool_calls.append({"tool": "python_sandbox", "elapsed_seconds": 0, "success": False})
+            else:
+                code = str(config.get("code") or workflow_input.get("code") or "print('DeepFlow workflow coder node')")
+                result = await execute_python(code, timeout=int(config.get("timeout") or 10))
+                output = {"stdout": result.stdout, "stderr": result.stderr, "success": result.success}
+                if not result.success:
+                    status = "failed"
+                    error = result.error or result.stderr
+                tool_calls.append({"tool": "python_sandbox", "elapsed_seconds": result.elapsed_seconds, "success": result.success})
         elif node_type == "Reporter":
             output = {"markdown": config.get("markdown") or _compose_report(workflow_input, outputs)}
         elif node_type == "Artifact":

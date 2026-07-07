@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.db import get_artifact, get_task, list_artifacts, save_artifact, save_report_version, update_task
 from backend.app.core.auth import require_login
+from backend.app.core.rate_limit import check_rate_limit
+from backend.app.core.runtime_config import artifact_rate_limit
 from cli.config import Config
 
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
@@ -86,6 +88,7 @@ def get_tts_provider() -> TTSProvider:
 @router.post("/podcast")
 async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_login)):
     """将报告转化为播客脚本"""
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     task = get_task(req.task_id, user_id=user["user_id"])
     if not task or not task.get("report_markdown"):
         raise HTTPException(status_code=404, detail="报告不存在")
@@ -170,6 +173,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
 
 @router.post("/ppt")
 async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """将报告转化为 PPT Markdown"""
     task = get_task(req.task_id, user_id=user["user_id"])
     if not task or not task.get("report_markdown"):
@@ -238,6 +242,7 @@ async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)
 
 @router.post("/prose/improve")
 async def improve_prose(req: ProsRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """润色文本"""
     import sys
     from pathlib import Path
@@ -252,6 +257,7 @@ async def improve_prose(req: ProsRequest, user: dict = Depends(require_login)):
 
 @router.post("/prose/expand")
 async def expand_prose(req: ProsRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """扩展文本"""
     import sys
     from pathlib import Path
@@ -266,6 +272,7 @@ async def expand_prose(req: ProsRequest, user: dict = Depends(require_login)):
 
 @router.post("/prose/shorten")
 async def shorten_prose(req: ProsRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """精简文本"""
     import sys
     from pathlib import Path
@@ -284,6 +291,7 @@ async def shorten_prose(req: ProsRequest, user: dict = Depends(require_login)):
 
 @router.post("/restyle")
 async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_login)):
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """用指定风格重新生成报告"""
     task = get_task(req.task_id, user_id=user["user_id"])
     if not task:
