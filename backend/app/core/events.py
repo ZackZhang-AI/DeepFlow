@@ -24,7 +24,7 @@ class EventManager:
 
     async def stream(self) -> AsyncGenerator[str, None]:
         """SSE 流 — 前端 EventSource 消费"""
-        yield "data: {\"type\":\"connected\",\"data\":{}}\n\n"
+        yield "event: connected\ndata: {\"type\":\"connected\",\"data\":{}}\n\n"
 
         while True:
             event = await self._queue.get()
