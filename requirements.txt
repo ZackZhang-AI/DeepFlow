@@ -22,5 +22,17 @@ rich>=13.0.0
 readability-lxml>=0.8.0
 lxml>=5.0.0
 
+# Coder Agent 数据分析
+numpy>=1.26.0
+pandas>=2.2.0
+matplotlib>=3.8.0
+scipy>=1.12.0
+pypdf>=4.0.0
+python-multipart>=0.0.9
+dashscope>=1.20.0
+python-pptx>=1.0.0
+pyttsx3>=2.99
+reportlab>=4.2.0
+
 # 异步支持
 aiofiles>=23.0.0

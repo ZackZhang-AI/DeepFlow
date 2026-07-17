@@ -69,6 +69,8 @@ class ResearchFinding(BaseModel):
     findings_markdown: str = Field(..., description="研究发现 (Markdown)")
     conclusion: str = Field(..., description="结论")
     references: list[SourceReference] = Field(default_factory=list, description="引用来源")
+    search_calls: int = Field(default=0, description="本步骤搜索调用次数")
+    crawl_calls: int = Field(default=0, description="本步骤网页抓取次数")
 
 
 # ============================================================
