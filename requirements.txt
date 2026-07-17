@@ -16,7 +16,7 @@ pydantic>=2.0.0
 python-dotenv>=1.0.0
 
 # CLI 美化
-rich>=13.0.0
+rich>=15.0.0
 
 # 网页抓取 (内容提取)
 readability-lxml>=0.8.0
