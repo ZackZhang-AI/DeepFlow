@@ -26,6 +26,9 @@ async def research_step(
     step_index: int,
     total_steps: int,
     locale: str = "zh-CN",
+    local_references: list[SourceReference] | None = None,
+    search_domains: list[str] | None = None,
+    recency_days: int | None = None,
 ) -> tuple[ResearchFinding, int, int]:
     """
     执行单个研究步骤。
@@ -55,6 +58,8 @@ async def research_step(
     query_user = f"""研究步骤：{step.title}
 步骤描述：{step.description}
 当前时间：{datetime.now().strftime("%Y-%m-%d")}
+搜索域限制：{", ".join(search_domains or []) or "无"}
+时效范围：{f"最近 {recency_days} 天" if recency_days else "无"}
 
 请生成搜索查询（每行一个）："""
 
@@ -77,12 +82,19 @@ async def research_step(
 
     logger.info(f"  搜索查询 ({len(queries)} 条): {queries[:3]}...")
 
+    local_references = local_references or []
+
     # ---- Step 2: 执行搜索 ----
-    search_results = await web_search_multi(queries, max_results_per_query=5)
+    search_results = await web_search_multi(
+        queries,
+        max_results_per_query=5,
+        include_domains=search_domains,
+        recency_days=recency_days,
+    )
     logger.info(f"  搜索返回 {len(search_results)} 条结果")
 
-    if not search_results:
-        # 无搜索结果时返回空发现
+    if not search_results and not local_references:
+        # 无搜索结果且无知识库命中时返回空发现
         return (
             ResearchFinding(
                 step_id=f"step_{step_index}",
@@ -91,6 +103,8 @@ async def research_step(
                 findings_markdown="未能获取到相关搜索结果。",
                 conclusion="搜索失败，无法得出相关结论。",
                 references=[],
+                search_calls=len(queries),
+                crawl_calls=0,
             ),
             total_prompt,
             total_completion,
@@ -98,7 +112,7 @@ async def research_step(
 
     # ---- Step 3: 深度抓取 (前 N 个结果) ----
     urls_to_crawl = [r.url for r in search_results[: Config.MAX_CRAWL_PAGES]]
-    crawl_results = await crawl_urls(urls_to_crawl)
+    crawl_results = await crawl_urls(urls_to_crawl) if urls_to_crawl else []
     successful_crawls = [c for c in crawl_results if c.success]
     logger.info(f"  成功抓取 {len(successful_crawls)}/{len(urls_to_crawl)} 个页面")
 
@@ -108,6 +122,7 @@ async def research_step(
     # 构建用户消息：搜索结果摘要 + 抓取内容
     search_summary = _format_search_results(search_results)
     crawl_summary = _format_crawl_results(successful_crawls)
+    local_summary = _format_local_references(local_references)
 
     user_message = f"""## 研究问题
 {step.description}
@@ -115,18 +130,26 @@ async def research_step(
 ## 搜索查询
 {chr(10).join(f'- {q}' for q in queries)}
 
+## 搜索约束
+- 搜索域：{", ".join(search_domains or []) or "无"}
+- 时效范围：{f"最近 {recency_days} 天" if recency_days else "无"}
+
 ## 搜索结果 ({len(search_results)} 条)
 {search_summary}
 
 ## 页面全文 ({len(successful_crawls)} 篇)
 {crawl_summary}
 
+## 私域知识库结果 ({len(local_references)} 条)
+{local_summary}
+
 ## 要求
 1. 基于以上搜索和抓取结果撰写研究发现
-2. 所有事实必须标注来源 URL
+2. 所有事实必须标注来源 URL；私域知识库来源必须保留 kb://...#chunk...，不得伪装成网页 URL
 3. 结论部分总结本次研究的关键发现
-4. 输出语言：{"中文" if locale == "zh-CN" else "English"}
-5. 当前日期：{datetime.now().strftime("%Y-%m-%d")}"""
+4. 如果使用私域知识库内容，需要在表述中明确这是“知识库资料”而不是公开网页信息
+5. 输出语言：{"中文" if locale == "zh-CN" else "English"}
+6. 当前日期：{datetime.now().strftime("%Y-%m-%d")}"""
 
     response, pr, cr = await LLMProvider.generate_text(
         model=Config.RESEARCHER_MODEL,
@@ -145,6 +168,9 @@ async def research_step(
         step_index=step_index,
         search_results=search_results,
         crawl_results=successful_crawls,
+        search_calls=len(queries),
+        crawl_calls=len(urls_to_crawl),
+        local_references=local_references,
     )
 
     return finding, total_prompt, total_completion
@@ -175,12 +201,28 @@ def _format_crawl_results(crawls: list) -> str:
     return "\n".join(lines)
 
 
+def _format_local_references(references: list[SourceReference]) -> str:
+    """格式化私域知识库命中结果。"""
+    if not references:
+        return "无"
+    lines: list[str] = []
+    for i, ref in enumerate(references, 1):
+        lines.append(f"{i}. [{ref.title}]({ref.url})")
+        if ref.snippet:
+            lines.append(f"   摘要: {ref.snippet[:1200]}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def _parse_researcher_output(
     response: str,
     step: ResearchStep,
     step_index: int,
     search_results: list[SearchResult],
     crawl_results: list,
+    search_calls: int,
+    crawl_calls: int,
+    local_references: list[SourceReference] | None = None,
 ) -> ResearchFinding:
     """从 LLM 原始输出中解析 ResearchFinding，并验证引用"""
     import re
@@ -204,16 +246,21 @@ def _parse_researcher_output(
     # 也检查正文中的 URL
     for match in url_pattern.finditer(main_body):
         url = match.group(2)
-        if url.startswith("http") and url not in found_urls:
+        if (url.startswith("http") or url.startswith("kb://")) and url not in found_urls:
             found_urls.append(url)
 
-    # 验证引用：URL 必须来自搜索结果或抓取结果
+    # 验证引用：URL 必须来自搜索、抓取或知识库召回结果
     valid_urls: set[str] = {r.url for r in search_results}
     valid_urls |= {c.url for c in crawl_results}
+    local_references = local_references or []
+    valid_urls |= {r.url for r in local_references}
 
     references: list[SourceReference] = []
     for url in found_urls:
-        if url in valid_urls:
+        local_ref = next((r for r in local_references if r.url == url), None)
+        if local_ref:
+            references.append(local_ref)
+        elif url in valid_urls:
             src = _find_source(url, search_results, crawl_results)
             references.append(src)
         else:
@@ -221,7 +268,7 @@ def _parse_researcher_output(
 
     # 如果没有任何有效引用，从搜索结果中构建
     if not references and search_results:
-        references = [
+        references = local_references[:3] + [
             SourceReference(
                 title=r.title,
                 url=r.url,
@@ -231,6 +278,8 @@ def _parse_researcher_output(
             )
             for r in search_results[:5]
         ]
+    elif not references and local_references:
+        references = local_references[:5]
 
     # 提取结论
     conclusion = ""
@@ -249,6 +298,8 @@ def _parse_researcher_output(
         findings_markdown=main_body,
         conclusion=conclusion[:1000],
         references=references,
+        search_calls=search_calls,
+        crawl_calls=crawl_calls,
     )
 
 

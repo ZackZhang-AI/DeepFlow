@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import re
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -120,7 +121,7 @@ warnings.filterwarnings('ignore')
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            "python", str(script_path),
+            sys.executable, str(script_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=tmpdir,

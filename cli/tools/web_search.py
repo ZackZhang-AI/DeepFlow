@@ -3,6 +3,8 @@
 """
 
 import logging
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from typing import Optional
 
 from cli.config import Config
@@ -15,6 +17,8 @@ async def web_search(
     query: str,
     max_results: int = 8,
     include_raw_content: bool = False,
+    include_domains: list[str] | None = None,
+    recency_days: int | None = None,
 ) -> list[SearchResult]:
     """
     执行一次搜索，自动降级。
@@ -22,15 +26,19 @@ async def web_search(
     主搜索源: Tavily
     备用搜索源: SerpAPI
     """
+    query = _apply_search_constraints(query, include_domains, recency_days)
     if Config.TAVILY_API_KEY:
         try:
-            return await _tavily_search(query, max_results, include_raw_content)
+            return _filter_domains(
+                await _tavily_search(query, max_results, include_raw_content),
+                include_domains,
+            )
         except Exception as e:
             logger.warning(f"Tavily 搜索失败: {e}，尝试降级到 SerpAPI")
 
     if Config.SERPAPI_API_KEY:
         try:
-            return await _serpapi_search(query, max_results)
+            return _filter_domains(await _serpapi_search(query, max_results), include_domains)
         except Exception as e:
             logger.error(f"SerpAPI 搜索也失败: {e}")
 
@@ -41,13 +49,23 @@ async def web_search(
 async def web_search_multi(
     queries: list[str],
     max_results_per_query: int = 5,
+    include_domains: list[str] | None = None,
+    recency_days: int | None = None,
 ) -> list[SearchResult]:
     """
     对多个搜索词并行搜索，去重合并结果。
     """
     import asyncio
 
-    tasks = [web_search(q, max_results=max_results_per_query) for q in queries]
+    tasks = [
+        web_search(
+            q,
+            max_results=max_results_per_query,
+            include_domains=include_domains,
+            recency_days=recency_days,
+        )
+        for q in queries
+    ]
     results_per_query = await asyncio.gather(*tasks, return_exceptions=True)
 
     seen_urls: set[str] = set()
@@ -64,6 +82,34 @@ async def web_search_multi(
     return merged
 
 
+def _apply_search_constraints(
+    query: str,
+    include_domains: list[str] | None,
+    recency_days: int | None,
+) -> str:
+    parts = [query.strip()]
+    domains = [d.strip().removeprefix("https://").removeprefix("http://").strip("/") for d in include_domains or [] if d.strip()]
+    if domains:
+        parts.append("(" + " OR ".join(f"site:{domain}" for domain in domains) + ")")
+    if recency_days:
+        after = (datetime.now() - timedelta(days=recency_days)).strftime("%Y-%m-%d")
+        parts.append(f"after:{after}")
+    return " ".join(p for p in parts if p)
+
+
+def _filter_domains(results: list[SearchResult], include_domains: list[str] | None) -> list[SearchResult]:
+    domains = [d.strip().removeprefix("https://").removeprefix("http://").strip("/").lower() for d in include_domains or [] if d.strip()]
+    if not domains:
+        return results
+
+    filtered: list[SearchResult] = []
+    for result in results:
+        host = urlparse(result.url).netloc.lower()
+        if any(host == domain or host.endswith(f".{domain}") for domain in domains):
+            filtered.append(result)
+    return filtered
+
+
 async def _tavily_search(
     query: str,
     max_results: int = 8,
@@ -73,10 +119,12 @@ async def _tavily_search(
     Tavily Search API
     https://docs.tavily.com/docs/api-reference/endpoint/search
     """
+    import asyncio
     from tavily import TavilyClient
 
     client = TavilyClient(api_key=Config.TAVILY_API_KEY)
-    response = client.search(
+    response = await asyncio.to_thread(
+        client.search,
         query=query,
         max_results=max_results,
         include_raw_content=include_raw_content,
