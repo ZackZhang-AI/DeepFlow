@@ -1,12 +1,11 @@
-"""
-SSE 事件流 API
-"""
+"""Server-Sent Events for research task progress."""
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from backend.app.core.auth import get_user_from_token
 from backend.app.core.db import get_task
 from backend.app.core.events import get_event_manager
 
@@ -14,20 +13,19 @@ router = APIRouter(prefix="/api/research-tasks", tags=["events"])
 
 
 @router.get("/{task_id}/events")
-async def stream_events(task_id: str):
-    """
-    SSE 事件流 — 前端 EventSource 消费。
+async def stream_events(task_id: str, token: str = Query(default="")):
+    """Stream task progress through EventSource.
 
-    事件类型:
-    - coordinator.started
-    - planner.completed
-    - step.started / step.completed
-    - report.started / report.completed
-    - error.fatal
+    EventSource cannot set Authorization headers, so the frontend passes the
+    bearer token as a query parameter for this endpoint only.
     """
-    task = get_task(task_id)
+    user = get_user_from_token(token) if token else None
+    if user is None:
+      raise HTTPException(status_code=401, detail="Authentication required")
+
+    task = get_task(task_id, user_id=user["user_id"])
     if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+        raise HTTPException(status_code=404, detail="Task not found")
 
     emitter = get_event_manager(task_id)
 

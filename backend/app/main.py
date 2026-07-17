@@ -19,15 +19,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from backend.app.config import CORS_ORIGINS
+from backend.app.core import db
+from backend.app.core.auth import ensure_demo_user
 from backend.app.core.db import init_db
-from backend.app.api.routes import research, events, report, artifacts
+from backend.app.api.routes import (
+    artifacts,
+    auth,
+    events,
+    knowledge,
+    report,
+    research,
+    templates,
+    tools,
+    workflows,
+    workspaces,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化数据库"""
     init_db()
-    print(f"Database initialized at: {Path(__file__).resolve().parent.parent / 'deepflow.db'}")
+    ensure_demo_user()
+    print(f"Database initialized at: {db.get_db_path()}")
     yield
 
 
@@ -52,6 +66,14 @@ app.include_router(research.router)
 app.include_router(events.router)
 app.include_router(report.router)
 app.include_router(artifacts.router)
+app.include_router(knowledge.router)
+app.include_router(auth.router)
+app.include_router(tools.router)
+app.include_router(workspaces.router)
+app.include_router(workspaces.share_router)
+app.include_router(workspaces.public_router)
+app.include_router(templates.router)
+app.include_router(workflows.router)
 
 
 @app.get("/api/health")
