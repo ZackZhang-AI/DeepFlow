@@ -20,7 +20,7 @@ rich>=13.0.0
 
 # 网页抓取 (内容提取)
 readability-lxml>=0.8.0
-lxml>=5.0.0
+lxml>=6.1.1
 
 # 异步支持
 aiofiles>=23.0.0
