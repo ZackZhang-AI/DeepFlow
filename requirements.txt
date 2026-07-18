@@ -19,7 +19,7 @@ python-dotenv>=1.0.0
 rich>=13.0.0
 
 # 网页抓取 (内容提取)
-readability-lxml>=0.8.0
+readability-lxml>=0.8.4.1
 lxml>=5.0.0
 
 # 异步支持
