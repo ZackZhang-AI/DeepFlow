@@ -8,22 +8,6 @@ import { Button, getButtonClasses } from "@/components/ui/Button";
 
 type AuthMode = "login" | "register";
 
-function UserIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
-      <path d="M10 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5 6.5c.7-2.3 2.5-3.5 5-3.5s4.3 1.2 5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
-      <path d="M6 8V6.8a4 4 0 0 1 8 0V8m-8 0h8m-8 0a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("login");
@@ -79,56 +63,61 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f8f4] text-slate-950">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(70,188,196,0.20),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(102,144,255,0.16),transparent_32%),linear-gradient(180deg,#fbfbf7_0%,#eef6f6_48%,#f7f8f4_100%)]" />
-      <div className="pointer-events-none absolute inset-0 -z-10 opacity-[0.40] [background-image:linear-gradient(rgba(15,23,42,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.055)_1px,transparent_1px)] [background-size:42px_42px]" />
-
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-5 sm:px-6">
-        <header className="flex items-center justify-between">
+    <main className="min-h-screen bg-[var(--background)] text-[var(--ink)]">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 sm:px-6 lg:px-8">
+        <header className="flex h-16 items-center justify-between border-b border-[var(--border)]">
           <Link href="/" className="group flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-50 to-blue-50 text-sm font-black text-cyan-700 shadow-sm shadow-cyan-900/5">
-              D
-            </span>
-            <span className="text-lg font-semibold tracking-tight text-slate-950">DeepFlow</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--ink)] text-sm font-bold text-white">D</span>
+            <span className="text-base font-semibold text-[var(--ink)]">DeepFlow</span>
           </Link>
-          <Link href="/history" className={getButtonClasses({ variant: "ghost", size: "sm", className: "min-h-9" })}>
-            资产中心
+          <Link href="/history" className={getButtonClasses({ variant: "ghost", size: "sm" })}>
+            研究资产
           </Link>
         </header>
 
-        <section className="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[1fr_430px]">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Private Workspace</p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              把研究任务、成果物和知识库收进你的个人工作台。
+        <section className="grid flex-1 items-center gap-12 py-10 lg:grid-cols-[minmax(0,1fr)_400px] lg:py-16">
+          <div className="max-w-xl">
+            <p className="text-sm font-medium text-teal-700">AI 深度研究工作台</p>
+            <h1 className="mt-4 text-4xl font-semibold leading-tight text-[var(--ink)] sm:text-5xl">
+              从问题出发，沉淀可追溯的研究成果。
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-slate-600">
-              登录后即可创建深度研究，继续查看历史任务、报告成果和私有知识资料。
+            <p className="mt-5 text-base leading-7 text-[var(--muted)]">
+              规划研究路径、检索公开资料、调用私域知识，并将报告与成果物保存在同一个工作台。
             </p>
+            <ol className="mt-8 space-y-4 border-l border-[var(--border-strong)] pl-5 text-sm text-[var(--muted)]">
+              <li><strong className="mr-2 font-semibold text-[var(--ink)]">01</strong>明确研究问题与执行深度</li>
+              <li><strong className="mr-2 font-semibold text-[var(--ink)]">02</strong>确认计划并跟踪 Agent 执行</li>
+              <li><strong className="mr-2 font-semibold text-[var(--ink)]">03</strong>审阅报告并沉淀研究资产</li>
+            </ol>
           </div>
 
-          <div className="rounded-[1.75rem] border border-white/70 bg-white/72 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+          <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_18px_45px_rgba(23,32,31,0.07)] sm:p-6">
             {checking ? (
-              <div className="flex min-h-96 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+              <div className="space-y-5" aria-label="正在确认登录状态">
+                <div className="page-skeleton h-8 w-40 rounded-lg" />
+                <div className="page-skeleton h-5 w-64 max-w-full rounded-md" />
+                <div className="page-skeleton h-11 w-full rounded-xl" />
+                <div className="page-skeleton h-12 w-full rounded-xl" />
+                <div className="page-skeleton h-12 w-full rounded-xl" />
+                <div className="page-skeleton h-12 w-full rounded-xl" />
               </div>
             ) : (
               <>
                 <div className="mb-6">
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
+                  <h2 className="text-2xl font-semibold text-[var(--ink)]">{title}</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
                     {mode === "login" ? "使用账号继续研究工作。" : "注册后将自动进入你的工作台。"}
                   </p>
                 </div>
 
-                <div className="mb-5 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-1 text-sm">
+                <div className="mb-5 grid grid-cols-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-1 text-sm">
                   <button
                     type="button"
                     onClick={() => {
                       setMode("login");
                       setError(null);
                     }}
-                    className={`rounded-xl px-3 py-2 font-semibold transition ${mode === "login" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                    className={`min-h-11 rounded-lg px-3 py-2 font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] ${mode === "login" ? "bg-white text-[var(--ink)] shadow-sm" : "text-[var(--muted)] hover:text-[var(--ink)]"}`}
                   >
                     登录
                   </button>
@@ -138,7 +127,7 @@ export default function LoginPage() {
                       setMode("register");
                       setError(null);
                     }}
-                    className={`rounded-xl px-3 py-2 font-semibold transition ${mode === "register" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                    className={`min-h-11 rounded-lg px-3 py-2 font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] ${mode === "register" ? "bg-white text-[var(--ink)] shadow-sm" : "text-[var(--muted)] hover:text-[var(--ink)]"}`}
                   >
                     注册
                   </button>
@@ -147,8 +136,7 @@ export default function LoginPage() {
                 <form className="space-y-4" onSubmit={handleSubmit}>
                   <label className="block">
                     <span className="text-xs font-semibold text-slate-600">用户名</span>
-                    <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-500/10">
-                      <UserIcon />
+                    <div className="mt-2 flex min-h-12 items-center rounded-xl border border-[var(--border)] bg-white px-4 transition focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--accent-soft)]">
                       <input
                         value={username}
                         onChange={(event) => setUsername(event.target.value)}
@@ -161,8 +149,7 @@ export default function LoginPage() {
 
                   <label className="block">
                     <span className="text-xs font-semibold text-slate-600">密码</span>
-                    <div className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-500/10">
-                      <LockIcon />
+                    <div className="mt-2 flex min-h-12 items-center rounded-xl border border-[var(--border)] bg-white px-4 transition focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--accent-soft)]">
                       <input
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
@@ -175,7 +162,7 @@ export default function LoginPage() {
                   </label>
 
                   {error && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm leading-6 text-red-700">
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
                       {error}
                     </div>
                   )}

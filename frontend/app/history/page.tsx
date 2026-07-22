@@ -13,6 +13,7 @@ import {
   listTaskArtifacts,
   redirectToLogin,
 } from "@/lib/api";
+import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { Button, getButtonClasses } from "@/components/ui/Button";
 import type { Artifact, AuthUser, KnowledgeDocument, Report, ResearchStatus, ResearchTask } from "@/lib/types";
 
@@ -55,30 +56,14 @@ const KNOWLEDGE_STATUS_META = {
   failed: { label: "失败", tone: "danger" },
 } satisfies Record<string, { label: string; tone: keyof typeof BADGE_CLASSES }>;
 
-function PlusIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
-      <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
-      <path d="M4 10h11m0 0-4-4m4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function StatusBadge({ status }: { status: ResearchStatus }) {
   const meta = STATUS_META[status] ?? { label: status, tone: "neutral" as const };
-  return <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${BADGE_CLASSES[meta.tone]}`}>{meta.label}</span>;
+  return <span className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${BADGE_CLASSES[meta.tone]}`}>{meta.label}</span>;
 }
 
 function KnowledgeStatusBadge({ doc }: { doc: KnowledgeDocument }) {
   const meta = KNOWLEDGE_STATUS_META[doc.status] ?? { label: doc.status, tone: "neutral" as const };
-  return <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${BADGE_CLASSES[meta.tone]}`}>{meta.label}</span>;
+  return <span className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${BADGE_CLASSES[meta.tone]}`}>{meta.label}</span>;
 }
 
 function getKnowledgeErrorSummary(doc: KnowledgeDocument) {
@@ -217,58 +202,54 @@ export default function HistoryPage() {
     redirectToLogin();
   };
 
+  const getTaskActionLabel = (task: ResearchTask) => {
+    const action = STATUS_META[task.status]?.action;
+    if (action === "report") return "查看报告";
+    if (action === "error") return "查看错误";
+    return "查看进度";
+  };
+
+  const getTaskActionVariant = (task: ResearchTask) => {
+    const action = STATUS_META[task.status]?.action;
+    if (action === "error") return "danger" as const;
+    if (action === "report") return "soft" as const;
+    return "secondary" as const;
+  };
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f8f4] text-slate-950">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(70,188,196,0.20),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(102,144,255,0.16),transparent_32%),linear-gradient(180deg,#fbfbf7_0%,#eef6f6_48%,#f7f8f4_100%)]" />
-      <div className="pointer-events-none absolute inset-0 -z-10 opacity-[0.40] [background-image:linear-gradient(rgba(15,23,42,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.055)_1px,transparent_1px)] [background-size:42px_42px]" />
+    <main className="min-h-screen bg-[var(--background)] text-[var(--ink)]">
+      <WorkspaceHeader
+        active="assets"
+        actions={
+          <>
+            <span className="hidden text-xs text-[var(--muted)] sm:block">{user?.username ?? "个人工作台"}</span>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>退出</Button>
+          </>
+        }
+      />
 
-      <header className="sticky top-0 z-30 border-b border-slate-900/10 bg-white/72 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="group flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-50 to-blue-50 text-sm font-black text-cyan-700 shadow-sm shadow-cyan-900/5">D</span>
-              <span className="text-lg font-semibold tracking-tight text-slate-950">DeepFlow</span>
-            </Link>
-            <nav className="hidden items-center rounded-2xl border border-slate-200 bg-white/55 p-1 text-sm shadow-sm sm:flex">
-              <Link href="/" className={getButtonClasses({ variant: "ghost", size: "sm", className: "min-h-9" })}>研究</Link>
-              <span className={getButtonClasses({ variant: "ghost", size: "sm", className: "min-h-9 bg-slate-950 text-white hover:bg-slate-950 hover:text-white" })}>资产中心</span>
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden rounded-full border border-cyan-700/10 bg-cyan-50/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:inline-flex">
-              {user?.username ?? "个人工作台"}
-            </span>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              退出
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-9 sm:px-6 sm:py-12 lg:px-8">
+        <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Asset Center</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">个人资产中心</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              统一管理你的研究任务、报告、PPTX、播客和知识库文档。
+            <h1 className="text-3xl font-semibold text-[var(--ink)]">研究资产</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+              查看研究任务、成果物与知识库资料。
             </p>
           </div>
-          <Link href="/" className={getButtonClasses({ variant: "primary", size: "md", className: "w-fit", })}>
-            <PlusIcon />
-            新建研究
+          <Link href="/" className={getButtonClasses({ variant: "primary", size: "md", className: "w-fit" })}>
+            <span aria-hidden="true">+</span> 新建研究
           </Link>
         </div>
 
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          <StatCard label="研究任务" value={tasks.length} />
-          <StatCard label="已完成" value={stats.completed} />
-          <StatCard label="进行中" value={stats.running} />
+        <div className="mb-5 flex flex-wrap gap-x-6 gap-y-2 border-y border-[var(--border)] py-3 text-sm text-[var(--muted)]">
+          <span>研究任务 <strong className="ml-1 font-semibold text-[var(--ink)]">{tasks.length}</strong></span>
+          <span>已完成 <strong className="ml-1 font-semibold text-[var(--ink)]">{stats.completed}</strong></span>
+          <span>进行中 <strong className="ml-1 font-semibold text-[var(--ink)]">{stats.running}</strong></span>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <section className="rounded-3xl border border-white/70 bg-white/68 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-            <div className="mb-4 flex flex-wrap gap-2">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_32px_rgba(23,32,31,0.05)]">
+            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-[var(--border)] pb-3">
               {[
                 ["tasks", "研究任务"],
                 ["artifacts", "成果物"],
@@ -277,14 +258,14 @@ export default function HistoryPage() {
                 <button
                   key={id}
                   onClick={() => setActiveTab(id as AssetTab)}
-                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${activeTab === id ? "bg-slate-950 text-white" : "bg-white/70 text-slate-600 hover:bg-white"}`}
+                  className={`min-h-11 rounded-xl px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] ${activeTab === id ? "bg-[var(--ink)] text-white" : "text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)]"}`}
                 >
                   {label}
                 </button>
               ))}
               <button
                 onClick={() => void loadAssets()}
-                className="ml-auto rounded-2xl border border-slate-200 bg-white/70 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white"
+                className="ml-auto min-h-11 rounded-xl px-3 py-2 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)]"
               >
                 刷新
               </button>
@@ -292,8 +273,8 @@ export default function HistoryPage() {
 
             {assetError && <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{assetError}</div>}
             {loading ? (
-              <div className="flex min-h-72 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+              <div className="space-y-3 py-2">
+                {[0, 1, 2, 3].map((item) => <div key={item} className="page-skeleton h-24 rounded-xl" />)}
               </div>
             ) : (
               <>
@@ -309,7 +290,7 @@ export default function HistoryPage() {
                           tabIndex={0}
                           onClick={() => openTask(task)}
                           onKeyDown={(event) => handleKeyDown(event, task)}
-                          className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:bg-white ${selectedTaskId === task.task_id ? "border-cyan-300 bg-cyan-50/60" : "border-slate-200 bg-white/70"}`}
+                          className={`rounded-xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-[0_8px_20px_rgba(23,32,31,0.06)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] ${selectedTaskId === task.task_id ? "border-teal-300 bg-teal-50/60" : "border-[var(--border)] bg-white"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -317,6 +298,18 @@ export default function HistoryPage() {
                               <p className="mt-1 text-xs text-slate-500">{formatDate(task.updated_at)}</p>
                             </div>
                             <StatusBadge status={task.status} />
+                          </div>
+                          <div className="mt-3 flex items-center justify-end border-t border-[var(--border)] pt-3">
+                            <Button
+                              variant={getTaskActionVariant(task)}
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTask(task);
+                              }}
+                            >
+                              {getTaskActionLabel(task)} <span aria-hidden="true">→</span>
+                            </Button>
                           </div>
                         </div>
                       ))
@@ -330,19 +323,20 @@ export default function HistoryPage() {
                       <EmptyState text="还没有成果物。" />
                     ) : (
                       artifacts.map((artifact) => (
-                        <div key={artifact.artifact_id} className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                        <div key={artifact.artifact_id} className="rounded-xl border border-[var(--border)] bg-white p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-xs font-semibold text-cyan-700">{getArtifactTypeLabel(artifact.artifact_type)}</p>
                               <h3 className="mt-1 line-clamp-2 text-sm font-semibold text-slate-950">{artifact.title || artifact.artifact_id}</h3>
                               <p className="mt-1 line-clamp-1 text-xs text-slate-500">{artifact.taskTopic}</p>
                             </div>
-                            <button
+                            <Button
+                              variant="secondary"
+                              size="sm"
                               onClick={() => void downloadWithAuth(artifact.download_url || `/api/artifacts/download/${artifact.artifact_id}`, artifact.title || "artifact.md")}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
                             >
                               下载
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ))
@@ -356,7 +350,7 @@ export default function HistoryPage() {
                       <EmptyState text="还没有知识库文档。" />
                     ) : (
                       knowledgeDocs.map((doc) => (
-                        <div key={doc.doc_id} className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                        <div key={doc.doc_id} className="rounded-xl border border-[var(--border)] bg-white p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <h3 className="line-clamp-2 text-sm font-semibold text-slate-950">{doc.title}</h3>
@@ -380,13 +374,11 @@ export default function HistoryPage() {
             )}
           </section>
 
-          <aside className="rounded-3xl border border-white/70 bg-white/68 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+          <aside className="min-h-80 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_32px_rgba(23,32,31,0.05)] lg:sticky lg:top-20 lg:self-start">
             {!selectedPanel && (
               <div className="flex min-h-80 flex-col items-center justify-center text-center">
-                <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-cyan-50 text-cyan-700">
-                  <ArrowRightIcon />
-                </div>
                 <p className="text-sm font-medium text-slate-700">选择左侧资产查看详情</p>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">任务报告、错误原因和执行进度会显示在这里。</p>
               </div>
             )}
 
@@ -394,29 +386,33 @@ export default function HistoryPage() {
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-slate-950">报告预览</h2>
                 {loadingReportTask ? (
-                  <div className="mt-8 flex justify-center">
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+                  <div className="mt-5 space-y-3" aria-label="正在加载报告">
+                    <div className="page-skeleton h-24 rounded-xl" />
+                    <div className="page-skeleton h-11 rounded-xl" />
+                    <div className="page-skeleton h-11 rounded-xl" />
                   </div>
                 ) : report ? (
                   <div className="mt-4 space-y-3">
-                    <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                       <h3 className="text-sm font-semibold text-slate-950">{report.title}</h3>
                       <p className="mt-2 text-xs leading-6 text-slate-500">
                         {report.sources_count} 个来源 · {Math.round(report.elapsed_seconds)}s · ¥{report.cost_rmb.toFixed(2)}
                       </p>
                     </div>
-                    <button
+                    <Button
+                      variant="secondary"
+                      fullWidth
                       onClick={() => selectedTaskId && void downloadWithAuth(`/api/reports/${selectedTaskId}/download?format=markdown`, `${report.title || "report"}.md`)}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       下载 Markdown
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="primary"
+                      fullWidth
                       onClick={() => selectedTaskId && void downloadWithAuth(`/api/reports/${selectedTaskId}/download?format=pdf`, `${report.title || "report"}.pdf`)}
-                      className="w-full rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                     >
                       下载 PDF
-                    </button>
+                    </Button>
                   </div>
                 ) : (
                   <p className="mt-4 text-sm text-slate-500">报告加载失败或尚未生成。</p>
@@ -446,18 +442,9 @@ export default function HistoryPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-3xl border border-white/70 bg-white/68 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-slate-950">{value}</p>
-    </div>
-  );
-}
-
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="flex min-h-48 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/50 text-sm text-slate-500">
+    <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)] text-sm text-[var(--muted)]">
       {text}
     </div>
   );

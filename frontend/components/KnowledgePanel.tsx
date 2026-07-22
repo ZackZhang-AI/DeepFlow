@@ -10,6 +10,7 @@ import {
   searchKnowledgeDocuments,
   uploadKnowledgeDocument,
 } from "@/lib/api";
+import { Button, getButtonClasses } from "@/components/ui/Button";
 import type { KnowledgeChunk, KnowledgeDocument, KnowledgeDocumentStatus, KnowledgeSearchHit } from "@/lib/types";
 
 const STATUS_META: Record<KnowledgeDocumentStatus, { label: string; className: string }> = {
@@ -22,7 +23,7 @@ const STATUS_META: Record<KnowledgeDocumentStatus, { label: string; className: s
 
 function StatusBadge({ status }: { status: KnowledgeDocumentStatus }) {
   const meta = STATUS_META[status] ?? { label: status, className: "border-slate-200 bg-slate-50 text-slate-600" };
-  return <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.className}`}>{meta.label}</span>;
+  return <span className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.className}`}>{meta.label}</span>;
 }
 
 function formatScore(value?: number | null) {
@@ -37,7 +38,7 @@ function getDocErrorSummary(doc: KnowledgeDocument) {
 
 function ChunkDebugCard({ hit }: { hit: KnowledgeSearchHit }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+    <div className="rounded-xl border border-[var(--border)] bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
         <span className="font-mono text-slate-600">chunk_id: {hit.chunk_id}</span>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">{hit.retrieval_mode}</span>
@@ -59,7 +60,7 @@ function ChunkDebugCard({ hit }: { hit: KnowledgeSearchHit }) {
 
 function StoredChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+    <div className="rounded-xl border border-[var(--border)] bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
         <span className="font-mono text-slate-600">chunk_id: {chunk.chunk_id}</span>
         <span>page: {chunk.page_num ?? "-"}</span>
@@ -191,20 +192,17 @@ export function KnowledgePanel() {
   const selectedDoc = docs.find((doc) => doc.doc_id === selectedDocId) ?? null;
 
   return (
-    <section className="space-y-4 rounded-3xl border border-white/70 bg-white/60 p-4 shadow-[0_18px_55px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+    <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-white p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">私域知识库</h2>
+          <h2 className="text-sm font-semibold text-[var(--ink)]">私域知识库</h2>
           <p className="mt-1 text-xs text-slate-500">
             已收录 {docs.length} 份资料，{ready} 份可检索。研究时会自动召回相关片段。
           </p>
         </div>
-        <button
-          onClick={toggleOpen}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          {open ? "收起" : "管理"}
-        </button>
+        <Button variant="secondary" size="sm" onClick={toggleOpen}>
+          {open ? "收起" : "管理知识库"}
+        </Button>
       </div>
 
       {open && (
@@ -217,25 +215,26 @@ export function KnowledgePanel() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="资料标题"
-                className="w-full rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                className="min-h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="粘贴资料正文，保存后会分块并生成索引"
                 rows={4}
-                className="w-full resize-y rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                className="w-full resize-y rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
             </div>
             <div className="flex gap-2 md:flex-col">
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={addText}
                 disabled={busy || !title.trim() || !content.trim()}
-                className="rounded-xl bg-cyan-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-40"
               >
                 {busy ? "处理中..." : "保存文本"}
-              </button>
-              <label className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50">
+              </Button>
+              <label className={getButtonClasses({ variant: "secondary", size: "sm", className: "cursor-pointer" })}>
                 上传文件
                 <input
                   type="file"
@@ -247,7 +246,7 @@ export function KnowledgePanel() {
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+          <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={query}
@@ -256,19 +255,20 @@ export function KnowledgePanel() {
                   if (e.key === "Enter") void runSearch();
                 }}
                 placeholder="输入问题，测试知识库召回"
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
               <label className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-2 text-[11px] text-slate-500">
                 <input type="checkbox" checked={useRerank} onChange={(e) => setUseRerank(e.target.checked)} />
                 rerank
               </label>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={runSearch}
                 disabled={searching || !query.trim()}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40"
               >
                 {searching ? "检索中..." : "检索"}
-              </button>
+              </Button>
             </div>
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -306,27 +306,30 @@ export function KnowledgePanel() {
                       <StatusBadge status={doc.status} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => void viewChunks(doc.doc_id)}
                         disabled={loadingChunks}
-                        className="rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                       >
                         查看 chunks
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => void reindex(doc.doc_id)}
                         disabled={busy}
-                        className="rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                       >
                         重建
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => void remove(doc.doc_id)}
                         disabled={busy}
-                        className="rounded-xl border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100 disabled:opacity-40"
                       >
                         删除
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))

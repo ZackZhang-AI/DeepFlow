@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   answerClarifications,
   confirmPlan,
@@ -14,53 +13,15 @@ import {
 } from "@/lib/api";
 import { ArtifactTools } from "@/components/ArtifactTools";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
+import { ResearchComposer, RESEARCH_DEPTHS, type ResearchDepth } from "@/components/ResearchComposer";
 import { ReportView } from "@/components/ReportView";
 import { StyleSelector } from "@/components/StyleSelector";
 import { Timeline } from "@/components/Timeline";
-import { Button, getButtonClasses } from "@/components/ui/Button";
+import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
+import { Button } from "@/components/ui/Button";
 import type { ResearchPlan, ResearchStep, Report } from "@/lib/types";
 
 type UIState = "input" | "loading" | "clarifying" | "plan_ready" | "researching" | "completed" | "error";
-type ResearchDepth = "fast" | "standard" | "deep";
-
-const QUICK_PROMPTS = [
-  {
-    id: "market",
-    label: "市场分析",
-    prompt: "分析某个市场的发展趋势、主要玩家和商业化机会",
-  },
-  {
-    id: "competitor",
-    label: "竞品研究",
-    prompt: "对比分析几个产品的定位、功能、商业模式和优劣势",
-  },
-  {
-    id: "tech",
-    label: "技术调研",
-    prompt: "调研某项技术的原理、应用场景、代表产品和发展趋势",
-  },
-] as const;
-
-const RESEARCH_DEPTHS: Array<{
-  id: ResearchDepth;
-  title: string;
-  time: string;
-  description: string;
-  maxSteps: number;
-}> = [
-  { id: "fast", title: "快速研究", time: "约 3 分钟", description: "适合快速了解", maxSteps: 3 },
-  { id: "standard", title: "标准研究", time: "约 8 分钟", description: "适合常规分析", maxSteps: 5 },
-  { id: "deep", title: "深度研究", time: "约 15 分钟", description: "适合完整报告", maxSteps: 8 },
-];
-
-function ArrowRightIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 20 20" fill="none">
-      <path d="M4 10h11m0 0-4-4m4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 export default function Home() {
   const [uiState, setUiState] = useState<UIState>("input");
   const [topic, setTopic] = useState("");
@@ -135,8 +96,7 @@ export default function Home() {
 
   const handleTopicChange = (value: string) => {
     setTopic(value);
-    const matchedPrompt = QUICK_PROMPTS.find((item) => item.prompt === value);
-    setSelectedQuickPrompt(matchedPrompt?.id ?? null);
+    setSelectedQuickPrompt(null);
   };
 
   const handleQuickPrompt = (promptId: string, prompt: string) => {
@@ -258,135 +218,58 @@ export default function Home() {
 
   if (authChecking) {
     return (
-      <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#f7f8f4] text-slate-950">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(70,188,196,0.20),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(102,144,255,0.16),transparent_32%),linear-gradient(180deg,#fbfbf7_0%,#eef6f6_48%,#f7f8f4_100%)]" />
-        <div className="flex items-center gap-3 rounded-2xl border border-white/70 bg-white/72 px-5 py-4 text-sm font-medium text-slate-600 shadow-[0_18px_55px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
-          正在确认登录状态...
+      <main className="min-h-screen bg-[var(--background)]">
+        <div className="border-b border-[var(--border)] bg-white/60">
+          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+            <div className="page-skeleton h-8 w-32 rounded-lg" />
+          </div>
+        </div>
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="page-skeleton h-9 w-72 max-w-full rounded-lg" />
+          <div className="page-skeleton mt-4 h-5 w-[30rem] max-w-full rounded-md" />
+          <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="page-skeleton h-[28rem] rounded-2xl" />
+            <div className="page-skeleton h-80 rounded-2xl" />
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f8f4] text-slate-950">
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_8%,rgba(70,188,196,0.24),transparent_34%),radial-gradient(circle_at_82%_16%,rgba(102,144,255,0.18),transparent_32%),linear-gradient(180deg,#fbfbf7_0%,#eef6f6_48%,#f7f8f4_100%)]" />
-      <div className="pointer-events-none absolute inset-0 -z-10 opacity-[0.45] [background-image:linear-gradient(rgba(15,23,42,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.055)_1px,transparent_1px)] [background-size:42px_42px]" />
+    <main className="min-h-screen bg-[var(--background)] text-[var(--ink)]">
+      <WorkspaceHeader active="research" actions={<span className="hidden text-xs text-[var(--muted)] sm:block">AI 深度研究工作台</span>} />
 
-      <header className="sticky top-0 z-30 border-b border-slate-900/10 bg-white/72 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="group flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-50 to-blue-50 text-sm font-black text-cyan-700 shadow-sm shadow-cyan-900/5">D</span>
-              <span className="text-lg font-semibold tracking-tight text-slate-950">DeepFlow</span>
-            </Link>
-            <nav className="hidden items-center rounded-2xl border border-slate-200 bg-white/55 p-1 text-sm shadow-sm shadow-slate-900/[0.03] sm:flex">
-              <span className={getButtonClasses({ variant: "ghost", size: "sm", className: "min-h-9 bg-slate-950 text-white hover:bg-slate-950 hover:text-white" })}>研究</span>
-              <Link href="/history" className={getButtonClasses({ variant: "ghost", size: "sm", className: "min-h-9" })}>资产</Link>
-            </nav>
-          </div>
-          <span className="rounded-full border border-cyan-700/10 bg-cyan-50/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm shadow-cyan-900/5">
-            AI 深度研究工作台
-          </span>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pt-12">
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-9 sm:px-6 sm:pt-12 lg:px-8">
         {(uiState === "input" || uiState === "loading" || uiState === "clarifying") && (
-          <section className="mx-auto flex min-h-[calc(100vh-112px)] max-w-4xl flex-col justify-center gap-8 py-8">
-            <div className="text-center">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.7)]" />
-                私域资料 + Agent 研究闭环
-              </div>
-              <h1 className="mx-auto max-w-4xl text-balance text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-                把复杂问题交给 <span className="bg-gradient-to-r from-cyan-600 via-teal-500 to-blue-600 bg-clip-text text-transparent">DeepFlow</span>，生成可信研究报告
-              </h1>
-              <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-7 text-slate-600 sm:text-lg">
-                输入研究主题，AI Agent 会规划路径、检索资料、整合私域知识，并输出结构化 Markdown 报告。
+          <section>
+            <div className="mb-7 max-w-2xl">
+              <h1 className="text-3xl font-semibold text-[var(--ink)] sm:text-4xl">开始一项深度研究</h1>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted)] sm:text-base">
+                描述你要解决的问题，DeepFlow 将规划研究路径、检索资料并生成可追溯的报告。
               </p>
             </div>
 
-            <div className="rounded-[2rem] border border-white/70 bg-white/58 p-3 shadow-[0_28px_90px_rgba(15,23,42,0.12)] backdrop-blur-2xl">
-              <div className="rounded-[1.55rem] border border-slate-900/10 bg-white/80 p-4 shadow-inner shadow-white transition-all focus-within:border-cyan-500/35 sm:p-5">
-                <textarea
-                  value={topic}
-                  onChange={(e) => handleTopicChange(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isPlanning}
-                  placeholder="例如：分析 2026 年 AI Agent 市场发展趋势、主要玩家与商业化机会..."
-                  className="min-h-32 w-full resize-none bg-transparent px-1 py-1 text-base leading-7 text-slate-950 placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:text-lg"
-                  rows={4}
-                />
-                <div className="mt-4 grid gap-3 border-t border-slate-900/10 pt-4 sm:grid-cols-2">
-                  <input
-                    value={sourceDomains}
-                    onChange={(e) => setSourceDomains(e.target.value)}
-                    placeholder="限定来源域名，可选，用逗号分隔"
-                    className="rounded-2xl border border-slate-200 bg-white/75 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  />
-                  <input
-                    value={recencyDays}
-                    onChange={(e) => setRecencyDays(e.target.value.replace(/\D/g, ""))}
-                    placeholder="优先近 N 天资料，可选"
-                    className="rounded-2xl border border-slate-200 bg-white/75 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  />
-                </div>
-                <div className="mt-4 flex flex-col gap-4 border-t border-slate-900/10 pt-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {QUICK_PROMPTS.map((item) => (
-                        <Button
-                          key={item.id}
-                          variant="ghost"
-                          size="sm"
-                          disabled={isPlanning}
-                          onClick={() => handleQuickPrompt(item.id, item.prompt)}
-                          className={selectedQuickPrompt === item.id ? "border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm" : "bg-slate-50/60"}
-                        >
-                          {item.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      loading={isPlanning}
-                      disabled={!topic.trim() || uiState === "clarifying"}
-                      onClick={handleSubmit}
-                      iconRight={<ArrowRightIcon />}
-                      className="w-full sm:w-auto sm:min-w-44"
-                    >
-                      {isPlanning ? "正在规划研究..." : "生成研究报告"}
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2 sm:grid-cols-3">
-                    {RESEARCH_DEPTHS.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        disabled={isPlanning}
-                        onClick={() => setResearchDepth(item.id)}
-                        className={`min-h-16 rounded-xl border px-3 py-2 text-left transition-all disabled:pointer-events-none disabled:opacity-50 ${
-                          researchDepth === item.id
-                            ? "border-cyan-300 bg-white text-slate-950 shadow-sm"
-                            : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/75 hover:text-slate-800"
-                        }`}
-                      >
-                        <span className="block text-sm font-semibold">{item.title}</span>
-                        <span className="mt-0.5 block text-xs font-medium text-cyan-700">{item.time}</span>
-                        <span className="mt-1 block text-xs text-slate-500">{item.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ResearchComposer
+              topic={topic}
+              selectedQuickPrompt={selectedQuickPrompt}
+              researchDepth={researchDepth}
+              sourceDomains={sourceDomains}
+              recencyDays={recencyDays}
+              isPlanning={isPlanning}
+              isClarifying={uiState === "clarifying"}
+              onTopicChange={handleTopicChange}
+              onQuickPrompt={handleQuickPrompt}
+              onDepthChange={setResearchDepth}
+              onSourceDomainsChange={setSourceDomains}
+              onRecencyDaysChange={setRecencyDays}
+              onKeyDown={handleKeyDown}
+              onSubmit={() => void handleSubmit()}
+            />
 
             {uiState === "clarifying" && (
-              <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-5 shadow-[0_18px_55px_rgba(15,23,42,0.07)]">
-                <h2 className="text-lg font-semibold text-slate-950">还需要补充一点上下文</h2>
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                <h2 className="text-lg font-semibold text-[var(--ink)]">还需要补充一点上下文</h2>
                 <div className="mt-4 space-y-3">
                   {clarificationQuestions.map((question, index) => (
                     <label key={question} className="block">
@@ -394,7 +277,7 @@ export default function Home() {
                       <input
                         value={clarificationAnswers[String(index)] ?? ""}
                         onChange={(e) => setClarificationAnswers((prev) => ({ ...prev, [String(index)]: e.target.value }))}
-                        className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-4 focus:ring-amber-500/10"
+                        className="mt-2 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-4 focus:ring-amber-500/10"
                       />
                     </label>
                   ))}
@@ -410,23 +293,21 @@ export default function Home() {
               </div>
             )}
 
-            <KnowledgePanel />
+            <div className="mt-5">
+              <KnowledgePanel />
+            </div>
           </section>
         )}
 
         {uiState !== "input" && uiState !== "loading" && uiState !== "clarifying" && (
           <div className="mx-auto max-w-5xl">
-            <div className="mb-6">
-              <KnowledgePanel />
-            </div>
-
             {(uiState === "plan_ready" || uiState === "researching") && plan && (
               <div className="space-y-6">
-                <section className="rounded-3xl border border-white/70 bg-white/70 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:p-6">
+                <section className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_32px_rgba(23,32,31,0.05)] sm:p-6">
                   <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Research Plan</p>
-                      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究计划</h2>
+                      <p className="text-xs font-medium text-teal-700">执行前确认</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-[var(--ink)]">研究计划</h2>
                       <p className="mt-1 text-sm text-slate-500">{plan.title}</p>
                     </div>
                     {uiState === "researching" && (
@@ -444,8 +325,8 @@ export default function Home() {
                       return (
                         <div
                           key={`${step.title}-${i}`}
-                          className={`flex flex-col gap-3 rounded-2xl border p-4 transition-all sm:flex-row sm:items-start ${
-                            isCurrent ? "border-cyan-400/50 bg-cyan-50/70" : isDone ? "border-emerald-200/70 bg-emerald-50/50" : "border-slate-900/10 bg-white/70"
+                          className={`flex flex-col gap-3 rounded-xl border p-4 transition-all sm:flex-row sm:items-start ${
+                            isCurrent ? "border-teal-300 bg-teal-50" : isDone ? "border-emerald-200 bg-emerald-50/50" : "border-[var(--border)] bg-white"
                           }`}
                         >
                           <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold ${isDone ? "bg-emerald-500 text-white" : "bg-slate-950 text-white"}`}>
@@ -456,13 +337,13 @@ export default function Home() {
                               <input
                                 value={step.title}
                                 onChange={(e) => updateStep(i, { title: e.target.value })}
-                                className="w-full rounded-xl border border-slate-900/10 bg-white/80 px-3 py-2 text-sm font-medium text-slate-900 shadow-sm transition focus:border-cyan-500/50 focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                                className="min-h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
                               />
                               <textarea
                                 value={step.description}
                                 onChange={(e) => updateStep(i, { description: e.target.value })}
                                 rows={2}
-                                className="w-full resize-y rounded-xl border border-slate-900/10 bg-white/80 px-3 py-2 text-sm leading-6 text-slate-600 shadow-sm transition focus:border-cyan-500/50 focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                                className="w-full resize-y rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm leading-6 text-slate-600 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
                               />
                             </div>
                           ) : (
@@ -501,8 +382,8 @@ export default function Home() {
                   )}
 
                   {uiState === "researching" && (
-                    <div className="mt-5 flex items-center gap-3 rounded-2xl border border-cyan-700/10 bg-cyan-50/70 px-4 py-3 text-sm font-medium text-cyan-800">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent" />
+                    <div className="mt-5 flex items-center gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-medium text-teal-800">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-teal-600" aria-hidden="true" />
                       正在执行第 {currentStep}/{totalSteps} 步...
                     </div>
                   )}
@@ -538,6 +419,10 @@ export default function Home() {
                 </Button>
               </div>
             )}
+
+            <div className="mt-6">
+              <KnowledgePanel />
+            </div>
           </div>
         )}
       </div>

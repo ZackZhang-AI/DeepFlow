@@ -26,23 +26,23 @@ const baseClasses =
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-[0_14px_30px_rgba(8,145,178,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(37,99,235,0.26)] active:translate-y-0 focus-visible:ring-cyan-500/20",
+    "bg-[var(--accent)] text-white shadow-[0_8px_18px_rgba(15,127,131,0.18)] hover:-translate-y-0.5 hover:bg-[var(--accent-hover)] hover:shadow-[0_11px_22px_rgba(15,127,131,0.22)] active:translate-y-0 active:shadow-sm focus-visible:ring-[var(--accent-soft)]",
   secondary:
-    "border border-slate-200 bg-white/80 text-slate-700 shadow-sm hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 hover:shadow-md active:translate-y-0 focus-visible:ring-slate-500/10",
+    "border border-[var(--border)] bg-white text-[var(--ink)] shadow-sm hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)] active:translate-y-0 focus-visible:ring-[var(--accent-soft)]",
   ghost:
-    "border border-transparent bg-transparent text-slate-600 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white/70 hover:text-slate-950 active:translate-y-0 focus-visible:ring-cyan-500/10",
+    "border border-transparent bg-transparent text-[var(--muted)] hover:bg-white hover:text-[var(--ink)] active:bg-[var(--surface-muted)] focus-visible:ring-[var(--accent-soft)]",
   danger:
     "border border-red-200 bg-red-50/80 text-red-600 shadow-sm hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100/80 hover:text-red-700 hover:shadow-md active:translate-y-0 focus-visible:ring-red-500/15",
   soft:
-    "border border-cyan-200 bg-cyan-50/80 text-cyan-800 shadow-sm hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-white hover:shadow-md active:translate-y-0 focus-visible:ring-cyan-500/15",
+    "border border-teal-200 bg-teal-50 text-teal-800 hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-100 active:translate-y-0 focus-visible:ring-[var(--accent-soft)]",
   link:
-    "min-h-0 rounded-lg p-0 text-slate-500 hover:text-slate-950 active:text-slate-700 focus-visible:ring-cyan-500/10",
+    "min-h-0 rounded-lg p-0 text-[var(--muted)] hover:text-[var(--ink)] active:text-slate-700 focus-visible:ring-[var(--accent-soft)]",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
   sm: "px-3 py-2 text-xs",
   md: "px-4 py-2.5 text-sm",
-  lg: "rounded-2xl px-6 py-3.5 text-base",
+  lg: "px-6 py-3.5 text-base",
 };
 
 function cx(...classes: Array<string | false | null | undefined>) {

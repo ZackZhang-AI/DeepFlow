@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f8f4;
-  --foreground: #0f172a;
+  --background: #f5f7f6;
+  --surface: #ffffff;
+  --surface-muted: #f0f3f2;
+  --foreground: #17201f;
+  --ink: #17201f;
+  --muted: #66736f;
+  --border: #dce3e0;
+  --border-strong: #c9d4d0;
+  --accent: #0f7f83;
+  --accent-hover: #0b6d71;
+  --accent-soft: rgba(15, 127, 131, 0.14);
 }
 
 body {
@@ -11,6 +20,44 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(15, 127, 131, 0.16);
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.page-skeleton {
+  background: linear-gradient(90deg, #e8ecea 25%, #f4f6f5 50%, #e8ecea 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shift 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shift {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Markdown prose overrides */
@@ -23,5 +70,5 @@ body {
   height: auto;
 }
 .prose blockquote {
-  border-left-color: #334155;
+  border-left-color: var(--border-strong);
 }
