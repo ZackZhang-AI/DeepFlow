@@ -13,6 +13,7 @@ import type {
   ReportVersionDetail,
   RestoreReportVersionResponse,
   ResearchTask,
+  ProviderReadiness,
   ResearchTemplate,
   ResearchTemplateSummary,
   Project,
@@ -179,6 +180,17 @@ export async function answerClarifications(taskId: string, answers: Record<strin
 
 export async function getTask(taskId: string) {
   return authJson<ResearchTask>(`/api/research-tasks/${taskId}`, undefined, `任务不存在：${taskId}`);
+}
+
+export async function retryResearchTask(taskId: string) {
+  return authJson<{ status: string; task_id: string }>(
+    `/api/research-tasks/${taskId}/retry`,
+    { method: "POST" },
+  );
+}
+
+export async function getSystemReadiness() {
+  return authJson<ProviderReadiness>("/api/system/readiness");
 }
 
 export async function listResearchTasks(limit = 50, offset = 0) {
@@ -363,8 +375,20 @@ export async function createShareLink(resourceType: "task_report" | "artifact", 
   return authJson<ShareLink>("/api/share-links", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resource_type: resourceType, resource_id: resourceId }),
+    body: JSON.stringify({ resource_type: resourceType, resource_id: resourceId, expires_in_days: 7 }),
   });
+}
+
+export async function revokeShareLink(shareId: string) {
+  return authJson(`/api/share-links/${shareId}`, { method: "DELETE" });
+}
+
+export async function logout() {
+  try {
+    await authFetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    clearAuthToken();
+  }
 }
 
 export async function listTemplates() {
@@ -463,10 +487,12 @@ export function subscribeToEvents(
   taskId: string,
   onEvent: (type: string, data: Record<string, unknown>) => void,
   onError?: (err: Event) => void,
+  afterSeq = 0,
 ) {
   const params = new URLSearchParams();
   const token = getAuthToken();
   if (token) params.set("token", token);
+  if (afterSeq > 0) params.set("after_seq", String(afterSeq));
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const es = new EventSource(`${API_BASE}/api/research-tasks/${taskId}/events${suffix}`);
 
@@ -483,7 +509,14 @@ export function subscribeToEvents(
 
   for (const eventType of eventTypes) {
     es.addEventListener(eventType, (e: MessageEvent) => {
-      onEvent(eventType, JSON.parse(e.data));
+      const payload = JSON.parse(e.data) as {
+        sequence?: number;
+        data?: Record<string, unknown>;
+      } & Record<string, unknown>;
+      onEvent(eventType, {
+        ...(payload.data ?? payload),
+        sequence: payload.sequence ?? Number(e.lastEventId || 0),
+      });
     });
   }
 

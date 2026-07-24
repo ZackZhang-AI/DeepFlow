@@ -21,7 +21,15 @@ from cli.agents.planner import generate_plan
 from cli.agents.researcher import research_step
 from cli.agents.coder import process_step
 from cli.agents.reporter import generate_report
-from backend.app.core.db import update_task, save_step, update_step, get_task, save_agent_run
+from backend.app.core.db import (
+    update_task,
+    save_step,
+    update_step,
+    get_task,
+    list_steps,
+    save_agent_run,
+)
+from backend.app.core.errors import classify_failure
 from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
@@ -86,9 +94,19 @@ async def generate_research_plan_task(
     except Exception as e:
         logger.exception(f"研究计划生成失败: {task_id}")
         errors.append(str(e))
-        update_task(task_id, status="failed", errors_json=errors)
+        failure = classify_failure(e)
+        update_task(
+            task_id,
+            status="failed",
+            failed_phase="planning",
+            error_code=failure.code,
+            error_message=failure.message,
+            retryable=1 if failure.retryable else 0,
+            errors_json=errors,
+        )
         await emitter.emit("error.fatal", message=str(e))
         remove_event_manager(task_id)
+        raise
 
 
 async def execute_research_task(task_id: str):
@@ -127,11 +145,32 @@ async def execute_research_task(task_id: str):
             steps=[s.title for s in plan.steps],
         )
 
+        persisted_steps = {row["step_index"]: row for row in list_steps(task_id)}
         findings: list[ResearchFinding] = []
         total_sources = 0
+        for step_num, row in persisted_steps.items():
+            if row.get("status") != "completed":
+                continue
+            references = [
+                SourceReference.model_validate(item)
+                for item in json.loads(row.get("sources_json") or "[]")
+            ]
+            findings.append(
+                ResearchFinding(
+                    step_id=f"step_{step_num}",
+                    step_title=row["title"],
+                    problem_statement=row.get("description") or "",
+                    findings_markdown=row.get("findings_markdown") or "",
+                    conclusion=row.get("conclusion") or "",
+                    references=references,
+                )
+            )
+            total_sources += len(references)
 
         for i, step in enumerate(plan.steps):
             step_num = i + 1
+            if persisted_steps.get(step_num, {}).get("status") == "completed":
+                continue
             update_task(task_id, current_step=step_num)
 
             step_kind = "search" if step.need_search else "code"
@@ -207,14 +246,11 @@ async def execute_research_task(task_id: str):
             )
 
         if not findings:
-            errors.append("所有研究步骤均未产生有效发现")
-            update_task(task_id, status="failed", errors_json=errors)
-            await emitter.emit("error.fatal", message=errors[-1])
-            return
+            raise RuntimeError("所有研究步骤均未产生有效发现")
 
         # ---- Phase 3: Reporting ----
         _ensure_token_budget(existing_tokens + total_prompt + total_completion)
-        update_task(task_id, status="generating_report")
+        update_task(task_id, status="generating_report", failed_phase="")
         await emitter.emit("report.started")
 
         phase_started = time.time()
@@ -265,8 +301,19 @@ async def execute_research_task(task_id: str):
     except Exception as e:
         logger.exception(f"研究任务失败: {task_id}")
         errors.append(str(e))
-        update_task(task_id, status="failed", errors_json=errors)
+        task = get_task(task_id) or {}
+        failure = classify_failure(e)
+        update_task(
+            task_id,
+            status="failed",
+            failed_phase="reporting" if task.get("status") == "generating_report" else "researching",
+            error_code=failure.code,
+            error_message=failure.message,
+            retryable=1 if failure.retryable else 0,
+            errors_json=errors,
+        )
         await emitter.emit("error.fatal", message=str(e))
+        raise
 
     finally:
         remove_event_manager(task_id)

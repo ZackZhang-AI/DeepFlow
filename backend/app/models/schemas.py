@@ -53,6 +53,13 @@ class ResearchTaskResponse(BaseModel):
     total_steps: int = 0
     report_id: Optional[str] = None
     clarification_questions: list[str] = Field(default_factory=list)
+    phase: str = ""
+    progress: float = 0.0
+    retryable: bool = False
+    error_code: str = ""
+    error_message: str = ""
+    last_event_seq: int = 0
+    plan: Optional[dict] = None
     created_at: str
     updated_at: str
 

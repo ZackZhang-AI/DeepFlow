@@ -23,12 +23,12 @@ class ToolTestRequest(BaseModel):
 
 @router.get("")
 async def list_registered_tools(user: dict = Depends(require_login)):
-    return list_tools()
+    return list_tools(user["user_id"])
 
 
 @router.patch("/{tool_id}")
 async def update_tool(tool_id: str, req: ToolToggleRequest, user: dict = Depends(require_login)):
-    tool = set_tool_enabled(tool_id, req.enabled)
+    tool = set_tool_enabled(tool_id, req.enabled, user["user_id"])
     if tool is None:
         raise HTTPException(status_code=404, detail="Tool not found")
     return tool
@@ -36,7 +36,7 @@ async def update_tool(tool_id: str, req: ToolToggleRequest, user: dict = Depends
 
 @router.post("/{tool_id}/test")
 async def test_registered_tool(tool_id: str, req: ToolTestRequest, user: dict = Depends(require_login)):
-    if get_tool(tool_id) is None:
+    if get_tool(tool_id, user["user_id"]) is None:
         raise HTTPException(status_code=404, detail="Tool not found")
     if tool_id == "python_sandbox" and sandbox_tool_disabled():
         raise HTTPException(status_code=403, detail="Python sandbox tool testing is disabled for this demo")

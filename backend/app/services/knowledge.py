@@ -22,10 +22,12 @@ from backend.app.core.db import (
     save_knowledge_document,
     update_knowledge_document,
 )
+from backend.app.config import BACKEND_DIR
 from backend.app.services.embedding import EmbeddingError, get_embedding_service, get_rerank_service
 from cli.config import Config
 
 MAX_DOCUMENT_CHARS = 300_000
+UPLOAD_DIR = BACKEND_DIR / "knowledge_uploads"
 EMBEDDING_BATCH_SIZE = 16
 SEPARATORS = ["\n\n", "\n", "\u3002", "\uff1b", ";", ".", " ", ""]
 
@@ -91,6 +93,102 @@ def _ingest_parsed_document(parsed: ParsedDocument, doc_id: str, user_id: str | 
 def ingest_uploaded_document(filename: str, raw: bytes, user_id: str | None = None) -> dict:
     parsed = parse_uploaded_document(filename, raw)
     return _ingest_parsed_document(parsed, f"doc_{uuid.uuid4().hex[:12]}", user_id=user_id)
+
+
+def queue_text_document(
+    title: str,
+    content: str,
+    source_name: str = "",
+    source_type: str = "text",
+    user_id: str = "local_default_user",
+) -> dict:
+    doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+    return save_knowledge_document(
+        doc_id=doc_id,
+        title=title,
+        content=content[:MAX_DOCUMENT_CHARS],
+        source_name=source_name,
+        source_type=source_type,
+        status="pending",
+        metadata={"ingest_mode": "text"},
+        user_id=user_id,
+    )
+
+
+def queue_uploaded_document(filename: str, raw: bytes, user_id: str) -> dict:
+    if not raw:
+        raise ValueError("File is empty")
+    suffix = Path(filename or "").suffix.lower()
+    if suffix not in ("", ".txt", ".md", ".markdown", ".pdf"):
+        raise ValueError("Only txt/md/pdf files are supported")
+    doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stored_path = UPLOAD_DIR / f"{doc_id}{suffix or '.txt'}"
+    stored_path.write_bytes(raw)
+    return save_knowledge_document(
+        doc_id=doc_id,
+        title=Path(filename or "knowledge").stem,
+        content="",
+        source_name=filename or "",
+        source_type="pdf" if suffix == ".pdf" else "text",
+        status="pending",
+        metadata={"upload_path": str(stored_path), "file_type": suffix.lstrip(".") or "text"},
+        user_id=user_id,
+    )
+
+
+def process_pending_document(doc_id: str, user_id: str) -> dict:
+    doc = get_knowledge_document(doc_id, user_id=user_id)
+    if not doc:
+        raise ValueError("Document not found")
+    update_knowledge_document(
+        doc_id,
+        owner_user_id=user_id,
+        status="processing",
+        error_message="",
+        chunk_count=0,
+    )
+    metadata = _loads_json(doc.get("metadata_json"), {})
+    try:
+        upload_path = metadata.get("upload_path")
+        if upload_path:
+            path = Path(upload_path)
+            parsed = parse_uploaded_document(doc.get("source_name") or path.name, path.read_bytes())
+        else:
+            content = (doc.get("content") or "")[:MAX_DOCUMENT_CHARS]
+            parsed = ParsedDocument(
+                title=doc["title"],
+                content=content,
+                source_name=doc.get("source_name") or "",
+                source_type=doc.get("source_type") or "text",
+                pages=[(1, content)],
+                metadata=metadata,
+            )
+        update_knowledge_document(
+            doc_id,
+            owner_user_id=user_id,
+            content=parsed.content,
+            metadata={**metadata, **parsed.metadata},
+        )
+        _embed_and_store(
+            doc_id=doc_id,
+            title=parsed.title,
+            source_name=parsed.source_name,
+            source_type=parsed.source_type,
+            pages=parsed.pages,
+            metadata={**metadata, **parsed.metadata},
+            user_id=user_id,
+        )
+    except Exception as exc:
+        update_knowledge_document(
+            doc_id,
+            owner_user_id=user_id,
+            status="failed",
+            error_message=str(exc),
+            chunk_count=0,
+        )
+        raise
+    return get_knowledge_document(doc_id, user_id=user_id) or doc
 
 
 def reindex_document(doc_id: str, user_id: str | None = None) -> dict:

@@ -46,6 +46,15 @@ def init_db() -> None:
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS user_tool_settings (
+            user_id TEXT NOT NULL,
+            tool_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, tool_id),
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS research_tasks (
             task_id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL DEFAULT 'local_default_user',
@@ -66,9 +75,49 @@ def init_db() -> None:
             clarification_json TEXT DEFAULT '[]',
             search_domains_json TEXT DEFAULT '[]',
             recency_days INTEGER,
+            attempt_count INTEGER DEFAULT 0,
+            error_code TEXT DEFAULT '',
+            error_message TEXT DEFAULT '',
+            retryable INTEGER DEFAULT 0,
+            last_heartbeat_at TEXT,
+            failed_phase TEXT DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS background_jobs (
+            job_id TEXT PRIMARY KEY,
+            task_id TEXT,
+            user_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            payload_json TEXT DEFAULT '{}',
+            attempt_count INTEGER DEFAULT 0,
+            max_attempts INTEGER DEFAULT 3,
+            run_after TEXT NOT NULL,
+            locked_at TEXT,
+            heartbeat_at TEXT,
+            error_code TEXT DEFAULT '',
+            error_message TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_ready
+            ON background_jobs(status, run_after, created_at);
+
+        CREATE TABLE IF NOT EXISTS research_events (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            data_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES research_tasks(task_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_research_events_task_sequence
+            ON research_events(task_id, sequence);
 
         CREATE TABLE IF NOT EXISTS research_steps (
             step_id TEXT PRIMARY KEY,
@@ -202,7 +251,9 @@ def init_db() -> None:
             user_id TEXT NOT NULL,
             resource_type TEXT NOT NULL,
             resource_id TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            revoked_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS research_templates (
@@ -279,12 +330,20 @@ def init_db() -> None:
     _ensure_column(conn, "agent_runs", "user_id", f"TEXT DEFAULT '{LOCAL_DEFAULT_USER_ID}'")
     _ensure_column(conn, "research_tasks", "workspace_id", "TEXT")
     _ensure_column(conn, "research_tasks", "project_id", "TEXT")
+    _ensure_column(conn, "research_tasks", "attempt_count", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "error_code", "TEXT DEFAULT ''")
+    _ensure_column(conn, "research_tasks", "error_message", "TEXT DEFAULT ''")
+    _ensure_column(conn, "research_tasks", "retryable", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "last_heartbeat_at", "TEXT")
+    _ensure_column(conn, "research_tasks", "failed_phase", "TEXT DEFAULT ''")
     _ensure_column(conn, "knowledge_documents", "workspace_id", "TEXT")
     _ensure_column(conn, "knowledge_documents", "project_id", "TEXT")
     _ensure_column(conn, "artifacts", "workspace_id", "TEXT")
     _ensure_column(conn, "artifacts", "project_id", "TEXT")
     _ensure_column(conn, "report_versions", "workspace_id", "TEXT")
     _ensure_column(conn, "report_versions", "project_id", "TEXT")
+    _ensure_column(conn, "shared_links", "expires_at", "TEXT")
+    _ensure_column(conn, "shared_links", "revoked_at", "TEXT")
     _ensure_local_default_user(conn)
     for table in (
         "research_tasks",
@@ -362,6 +421,46 @@ def get_auth_session(token_hash: str) -> Optional[dict]:
     row = conn.execute("SELECT * FROM auth_sessions WHERE token_hash = ?", (token_hash,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def delete_auth_session(token_hash: str) -> bool:
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def delete_expired_auth_sessions(now: str) -> int:
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM auth_sessions WHERE expires_at <= ?", (now,))
+    conn.commit()
+    conn.close()
+    return cursor.rowcount
+
+
+def get_tool_setting(user_id: str, tool_id: str) -> bool | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT enabled FROM user_tool_settings WHERE user_id = ? AND tool_id = ?",
+        (user_id, tool_id),
+    ).fetchone()
+    conn.close()
+    return bool(row["enabled"]) if row else None
+
+
+def set_tool_setting(user_id: str, tool_id: str, enabled: bool) -> None:
+    now = datetime.now().isoformat()
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO user_tool_settings (user_id, tool_id, enabled, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(user_id, tool_id) DO UPDATE SET
+             enabled = excluded.enabled, updated_at = excluded.updated_at""",
+        (user_id, tool_id, 1 if enabled else 0, now),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _task_user_id(task_id: str) -> str:
@@ -482,6 +581,23 @@ def update_step(step_id: str, **kwargs) -> None:
     conn.execute(f"UPDATE research_steps SET {set_clause} WHERE step_id = ?", values + [step_id])
     conn.commit()
     conn.close()
+
+
+def list_steps(task_id: str, user_id: str | None = None) -> list[dict]:
+    conn = get_connection()
+    if user_id is None:
+        rows = conn.execute(
+            "SELECT * FROM research_steps WHERE task_id = ? ORDER BY step_index",
+            (task_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT * FROM research_steps
+               WHERE task_id = ? AND user_id = ? ORDER BY step_index""",
+            (task_id, user_id),
+        ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def save_knowledge_document(

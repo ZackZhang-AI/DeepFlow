@@ -23,7 +23,31 @@ export interface ResearchTask {
   created_at: string;
   updated_at: string;
   errors_json?: string;
+  phase: ResearchPhase;
+  progress: number;
+  retryable: boolean;
+  error_code: string;
+  error_message: string;
+  last_event_seq: number;
+  plan: ResearchPlan | null;
 }
+
+export type ResearchPhase = ResearchStatus | "reporting";
+
+export interface ResearchFailure {
+  retryable: boolean;
+  error_code: string;
+  error_message: string;
+}
+
+export interface ResearchProgress {
+  phase: ResearchPhase;
+  current_step: number;
+  total_steps: number;
+  progress: number;
+}
+
+export type TaskRecoveryAction = "reconnect" | "retry" | "edit_plan" | "new_research";
 
 export type ResearchStatus =
   | "coordinating"
@@ -92,8 +116,25 @@ export interface ProseResponse {
 }
 
 export interface ResearchEvent {
+  sequence: number;
   type: string;
   data: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface ReadinessItem {
+  configured: boolean;
+  ready: boolean;
+  reason: string;
+}
+
+export interface ProviderReadiness {
+  ready: boolean;
+  model: ReadinessItem;
+  search: ReadinessItem;
+  embedding: ReadinessItem;
+  docker: ReadinessItem;
+  database: ReadinessItem;
 }
 
 export type KnowledgeDocumentStatus = "pending" | "processing" | "ready" | "completed" | "failed";
@@ -233,6 +274,7 @@ export interface ShareLink {
   token: string;
   url: string;
   resource_type: "task_report" | "artifact";
+  expires_at?: string;
 }
 
 export interface ResearchTemplateSummary {

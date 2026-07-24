@@ -13,7 +13,11 @@ router = APIRouter(prefix="/api/research-tasks", tags=["events"])
 
 
 @router.get("/{task_id}/events")
-async def stream_events(task_id: str, token: str = Query(default="")):
+async def stream_events(
+    task_id: str,
+    token: str = Query(default=""),
+    after_seq: int = Query(default=0, ge=0),
+):
     """Stream task progress through EventSource.
 
     EventSource cannot set Authorization headers, so the frontend passes the
@@ -30,7 +34,7 @@ async def stream_events(task_id: str, token: str = Query(default="")):
     emitter = get_event_manager(task_id)
 
     async def event_generator():
-        async for chunk in emitter.stream():
+        async for chunk in emitter.stream(after_seq=after_seq):
             yield chunk
             await asyncio.sleep(0.01)
 

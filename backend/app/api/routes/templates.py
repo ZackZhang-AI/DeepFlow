@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
 from backend.app.core.db import create_task, get_connection
+from backend.app.core.readiness import require_research_providers
+from cli.models import ResearchPlan, ResearchStep, StepType
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
@@ -132,6 +134,7 @@ async def start_research_from_template(
     req: StartFromTemplateRequest,
     user: dict = Depends(require_login),
 ):
+    require_research_providers()
     template = _get_template(template_id, user["user_id"])
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -140,6 +143,17 @@ async def start_research_from_template(
     task = create_task(task_id, req.topic, req.locale, search_domains=domains, user_id=user["user_id"])
     plan_structure = json.loads(template.get("plan_structure_json") or "[]")
     questions = json.loads(template.get("clarification_questions_json") or "[]")
+    plan = (
+        _build_template_plan(
+            topic=req.topic,
+            locale=req.locale,
+            template_id=template_id,
+            report_style=template["report_style"],
+            plan_structure=plan_structure,
+        )
+        if plan_structure
+        else None
+    )
     conn = get_connection()
     conn.execute(
         """UPDATE research_tasks
@@ -147,7 +161,7 @@ async def start_research_from_template(
            WHERE task_id = ? AND user_id = ?""",
         (
             json.dumps(questions, ensure_ascii=False),
-            json.dumps({"template_id": template_id, "style": template["report_style"], "steps": plan_structure}, ensure_ascii=False),
+            json.dumps(plan, ensure_ascii=False) if plan else None,
             "awaiting_confirmation" if plan_structure else "clarifying",
             datetime.now().isoformat(),
             task_id,
@@ -159,6 +173,66 @@ async def start_research_from_template(
     task["template_id"] = template_id
     task["status"] = "awaiting_confirmation" if plan_structure else "clarifying"
     return task
+
+
+def _build_template_plan(
+    *,
+    topic: str,
+    locale: str,
+    template_id: str,
+    report_style: str,
+    plan_structure: list[dict],
+) -> dict:
+    """Normalize legacy template steps into the canonical research plan schema."""
+    steps: list[ResearchStep] = []
+    for index, raw_step in enumerate(plan_structure, start=1):
+        title = str(
+            raw_step.get("title")
+            or raw_step.get("name")
+            or raw_step.get("label")
+            or f"研究步骤 {index}"
+        ).strip()
+        description = str(
+            raw_step.get("description")
+            or raw_step.get("objective")
+            or raw_step.get("query")
+            or raw_step.get("prompt")
+            or title
+        ).strip()
+        raw_type = str(raw_step.get("step_type") or raw_step.get("type") or "").lower()
+        need_search = bool(
+            raw_step.get(
+                "need_search",
+                raw_step.get("search_required", raw_type != StepType.PROCESSING.value),
+            )
+        )
+        step_type = (
+            StepType.PROCESSING
+            if raw_type in {StepType.PROCESSING.value, "process", "analysis", "analyze"}
+            else StepType.RESEARCH
+        )
+        if step_type == StepType.PROCESSING:
+            need_search = False
+        steps.append(
+            ResearchStep(
+                title=title,
+                description=description,
+                need_search=need_search,
+                step_type=step_type,
+            )
+        )
+
+    validated = ResearchPlan(
+        title=topic,
+        locale=locale,
+        has_enough_context=True,
+        thought=f"Research plan created from template {template_id}.",
+        steps=steps,
+    )
+    payload = validated.model_dump(mode="json")
+    payload["template_id"] = template_id
+    payload["style"] = report_style
+    return payload
 
 
 def _get_template(template_id: str, user_id: str) -> dict | None:

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from backend.app.core.runtime_config import sandbox_tool_disabled
+from backend.app.core.db import get_tool_setting, set_tool_setting
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
 from cli.tools.sandbox import execute_python
@@ -61,30 +62,28 @@ _TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
     ),
 }
 
-_enabled_tools: dict[str, bool] = {tool_id: True for tool_id in _TOOL_DEFINITIONS}
-
-
-def _tool_enabled(tool_id: str) -> bool:
+def _tool_enabled(tool_id: str, user_id: str) -> bool:
     if tool_id == "python_sandbox" and sandbox_tool_disabled():
         return False
-    return _enabled_tools.get(tool_id, False)
+    configured = get_tool_setting(user_id, tool_id)
+    return True if configured is None else configured
 
 
-def list_tools() -> list[dict[str, Any]]:
+def list_tools(user_id: str) -> list[dict[str, Any]]:
     return [
         {
             "tool_id": tool.tool_id,
             "name": tool.name,
             "description": tool.description,
             "category": tool.category,
-            "enabled": _tool_enabled(tool.tool_id),
+            "enabled": _tool_enabled(tool.tool_id, user_id),
             "input_schema": tool.input_schema,
         }
         for tool in _TOOL_DEFINITIONS.values()
     ]
 
 
-def get_tool(tool_id: str) -> dict[str, Any] | None:
+def get_tool(tool_id: str, user_id: str) -> dict[str, Any] | None:
     tool = _TOOL_DEFINITIONS.get(tool_id)
     if tool is None:
         return None
@@ -93,23 +92,23 @@ def get_tool(tool_id: str) -> dict[str, Any] | None:
         "name": tool.name,
         "description": tool.description,
         "category": tool.category,
-        "enabled": _tool_enabled(tool.tool_id),
+        "enabled": _tool_enabled(tool.tool_id, user_id),
         "input_schema": tool.input_schema,
     }
 
 
-def set_tool_enabled(tool_id: str, enabled: bool) -> dict[str, Any] | None:
+def set_tool_enabled(tool_id: str, enabled: bool, user_id: str) -> dict[str, Any] | None:
     if tool_id not in _TOOL_DEFINITIONS:
         return None
-    _enabled_tools[tool_id] = enabled
-    return get_tool(tool_id)
+    set_tool_setting(user_id, tool_id, enabled)
+    return get_tool(tool_id, user_id)
 
 
 async def test_tool(tool_id: str, input_data: dict[str, Any], user: dict) -> dict[str, Any]:
     tool = _TOOL_DEFINITIONS.get(tool_id)
     if tool is None:
         raise ValueError("Tool not found")
-    if not _tool_enabled(tool_id):
+    if not _tool_enabled(tool_id, user["user_id"]):
         return _result(False, "", "", 0.0, "Tool is disabled")
 
     started = time.perf_counter()

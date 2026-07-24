@@ -79,8 +79,17 @@ def test_auth_knowledge_report_and_artifact_smoke(monkeypatch, tmp_path):
             },
             headers=headers_a,
         )
-        assert doc.status_code == 200, doc.text
-        assert doc.json()["status"] in {"ready", "completed"}
+        assert doc.status_code == 202, doc.text
+        doc_id = doc.json()["doc_id"]
+        deadline = time.time() + 3
+        indexed = None
+        while time.time() < deadline:
+            docs = client.get("/api/knowledge-documents", headers=headers_a).json()
+            indexed = next(item for item in docs if item["doc_id"] == doc_id)
+            if indexed["status"] in {"ready", "failed"}:
+                break
+            time.sleep(0.05)
+        assert indexed and indexed["status"] == "ready", indexed
 
         search = client.get("/api/knowledge-documents/search?q=private knowledge&rerank=true", headers=headers_a)
         assert search.status_code == 200, search.text
@@ -142,8 +151,8 @@ def test_prd_extension_smoke(monkeypatch, tmp_path):
             headers=headers_a,
         )
         assert sandbox.status_code == 200, sandbox.text
-        assert sandbox.json()["success"] is True
-        assert "2" in sandbox.json()["output_summary"]
+        assert sandbox.json()["success"] is False
+        assert sandbox.json()["error"]
 
         workspace = client.post(
             "/api/workspaces",

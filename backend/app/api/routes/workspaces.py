@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -45,6 +45,7 @@ class CommentRequest(BaseModel):
 class ShareLinkRequest(BaseModel):
     resource_type: str = Field(..., pattern="^(task_report|artifact)$")
     resource_id: str = Field(..., min_length=1, max_length=200)
+    expires_in_days: int = Field(default=7, ge=1, le=365)
 
 
 @router.get("")
@@ -196,15 +197,38 @@ async def create_share_link(req: ShareLinkRequest, user: dict = Depends(require_
     token = secrets.token_urlsafe(24)
     share_id = f"share_{uuid.uuid4().hex[:12]}"
     now = datetime.now().isoformat()
+    expires_at = (datetime.now() + timedelta(days=req.expires_in_days)).isoformat()
     conn = get_connection()
     conn.execute(
-        """INSERT INTO shared_links (share_id, token, user_id, resource_type, resource_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (share_id, token, user["user_id"], req.resource_type, req.resource_id, now),
+        """INSERT INTO shared_links
+           (share_id, token, user_id, resource_type, resource_id, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (share_id, token, user["user_id"], req.resource_type, req.resource_id, now, expires_at),
     )
     conn.commit()
     conn.close()
-    return {"share_id": share_id, "token": token, "url": f"/shared/{token}", "resource_type": req.resource_type}
+    return {
+        "share_id": share_id,
+        "token": token,
+        "url": f"/shared/{token}",
+        "resource_type": req.resource_type,
+        "expires_at": expires_at,
+    }
+
+
+@share_router.delete("/{share_id}", status_code=204)
+async def revoke_share_link(share_id: str, user: dict = Depends(require_login)):
+    conn = get_connection()
+    cursor = conn.execute(
+        """UPDATE shared_links SET revoked_at = ?
+           WHERE share_id = ? AND user_id = ? AND revoked_at IS NULL""",
+        (datetime.now().isoformat(), share_id, user["user_id"]),
+    )
+    conn.commit()
+    conn.close()
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Shared link not found")
+    return None
 
 
 @public_router.get("/{token}")
@@ -215,6 +239,12 @@ async def get_shared_resource(token: str):
         conn.close()
         raise HTTPException(status_code=404, detail="Shared link not found")
     share_dict = dict(share)
+    if share_dict.get("revoked_at"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Shared link not found")
+    if share_dict.get("expires_at") and share_dict["expires_at"] <= datetime.now().isoformat():
+        conn.close()
+        raise HTTPException(status_code=410, detail="Shared link has expired")
     if share_dict["resource_type"] == "task_report":
         row = conn.execute(
             """SELECT task_id, topic, report_markdown, sources_count, tokens_used, elapsed_seconds, updated_at

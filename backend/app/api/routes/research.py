@@ -6,7 +6,7 @@ import uuid
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.models.schemas import (
     AgentRunResponse,
@@ -20,7 +20,9 @@ from backend.app.core.auth import require_login
 from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import research_task_rate_limit
-from backend.app.services.research import execute_research_task, generate_research_plan_task
+from backend.app.core.readiness import require_research_providers
+from backend.app.core.events import get_last_event_sequence
+from backend.app.core.job_queue import enqueue_job
 from cli.config import Config
 
 router = APIRouter(prefix="/api/research-tasks", tags=["research"])
@@ -29,11 +31,11 @@ router = APIRouter(prefix="/api/research-tasks", tags=["research"])
 @router.post("", response_model=ResearchTaskResponse, status_code=201)
 async def create_research_task(
     req: CreateResearchRequest,
-    background_tasks: BackgroundTasks,
     user: dict = Depends(require_login),
 ):
     """创建研究任务并启动后台计划生成，等待用户确认后执行。"""
     check_rate_limit("research.create", user["user_id"], research_task_rate_limit())
+    require_research_providers()
     max_steps = min(req.max_steps, Config.MAX_STEPS)
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
@@ -66,12 +68,11 @@ async def create_research_task(
         )
 
     # 先生成研究计划，等待用户确认后再跑研究链路
-    background_tasks.add_task(
-        generate_research_plan_task,
+    enqueue_job(
+        "research_plan",
         task_id=task_id,
-        topic=req.topic,
-        locale=req.locale,
-        max_steps=max_steps,
+        user_id=user["user_id"],
+        payload={"topic": req.topic, "locale": req.locale, "max_steps": max_steps},
     )
 
     return ResearchTaskResponse(
@@ -91,45 +92,20 @@ async def get_research_task(task_id: str, user: dict = Depends(require_login)):
     task = get_task(task_id, user_id=user["user_id"])
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return ResearchTaskResponse(
-        task_id=task["task_id"],
-        topic=task["topic"],
-        locale=task["locale"],
-        status=task["status"],
-        current_step=task["current_step"] or 0,
-        total_steps=task["total_steps"] or 0,
-        report_id=f"rep_{task_id}" if task["report_markdown"] else None,
-        clarification_questions=json.loads(task.get("clarification_json") or "[]"),
-        created_at=task["created_at"],
-        updated_at=task["updated_at"],
-    )
+    return _task_response(task)
 
 
 @router.get("")
 async def list_research_tasks(limit: int = 20, offset: int = 0, user: dict = Depends(require_login)):
     """获取任务列表"""
     tasks = list_tasks(limit=limit, offset=offset, user_id=user["user_id"])
-    return [
-        ResearchTaskResponse(
-            task_id=t["task_id"],
-            topic=t["topic"],
-            locale=t["locale"],
-            status=t["status"],
-            current_step=t["current_step"] or 0,
-            total_steps=t["total_steps"] or 0,
-            clarification_questions=json.loads(t.get("clarification_json") or "[]"),
-            created_at=t["created_at"],
-            updated_at=t["updated_at"],
-        )
-        for t in tasks
-    ]
+    return [_task_response(task) for task in tasks]
 
 
 @router.post("/{task_id}/clarifications", response_model=ResearchTaskResponse)
 async def answer_clarifications(
     task_id: str,
     req: ClarificationAnswerRequest,
-    background_tasks: BackgroundTasks,
     user: dict = Depends(require_login),
 ):
     """提交澄清回答，并启动计划生成。"""
@@ -145,11 +121,11 @@ async def answer_clarifications(
         enriched_topic += "\n\n用户补充信息：\n" + "\n".join(f"- {answer}" for answer in answers)
 
     task = update_task(task_id, owner_user_id=user["user_id"], topic=enriched_topic, status="coordinating")
-    background_tasks.add_task(
-        generate_research_plan_task,
+    enqueue_job(
+        "research_plan",
         task_id=task_id,
-        topic=enriched_topic,
-        locale=task["locale"],
+        user_id=user["user_id"],
+        payload={"topic": enriched_topic, "locale": task["locale"]},
     )
 
     return ResearchTaskResponse(
@@ -174,7 +150,7 @@ async def get_agent_runs(task_id: str, user: dict = Depends(require_login)):
 
 
 @router.post("/{task_id}/confirm-plan")
-async def confirm_plan(task_id: str, req: ConfirmPlanRequest, background_tasks: BackgroundTasks, user: dict = Depends(require_login)):
+async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depends(require_login)):
     """确认、拒绝或轻量修改研究计划。"""
     task = get_task(task_id, user_id=user["user_id"])
     if task is None:
@@ -186,7 +162,7 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, background_tasks: 
         if task["status"] not in ("awaiting_confirmation", "failed"):
             raise HTTPException(status_code=400, detail=f"当前状态不能确认计划: {task['status']}")
         update_task(task_id, owner_user_id=user["user_id"], status="queued")
-        background_tasks.add_task(execute_research_task, task_id=task_id)
+        enqueue_job("research_execute", task_id=task_id, user_id=user["user_id"])
         return {"status": "accepted", "task_id": task_id}
     elif req.action == "reject":
         update_task(task_id, owner_user_id=user["user_id"], status="failed")
@@ -213,6 +189,33 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, background_tasks: 
         raise HTTPException(status_code=400, detail=f"无效的 action: {req.action}")
 
 
+@router.post("/{task_id}/retry")
+async def retry_research_task(task_id: str, user: dict = Depends(require_login)):
+    task = get_task(task_id, user_id=user["user_id"])
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task["status"] != "failed":
+        raise HTTPException(status_code=409, detail="只有失败任务可以重试")
+    if not task.get("retryable"):
+        raise HTTPException(status_code=409, detail="该失败需要修改配置或计划后再执行")
+
+    if task.get("plan_json"):
+        job_type = "research_execute"
+        payload = {}
+    else:
+        job_type = "research_plan"
+        payload = {"topic": task["topic"], "locale": task["locale"]}
+    update_task(
+        task_id,
+        owner_user_id=user["user_id"],
+        status="queued",
+        error_code="",
+        error_message="",
+    )
+    enqueue_job(job_type, task_id=task_id, user_id=user["user_id"], payload=payload)
+    return {"status": "queued", "task_id": task_id}
+
+
 def _build_clarification_questions(topic: str) -> list[str]:
     """用低成本规则判断研究主题是否需要补充信息。"""
     text = topic.strip()
@@ -234,3 +237,32 @@ def _build_clarification_questions(topic: str) -> list[str]:
         questions.append("是否有指定竞品或对比对象？")
 
     return questions[:3]
+
+
+def _task_response(task: dict) -> ResearchTaskResponse:
+    current_step = int(task.get("current_step") or 0)
+    total_steps = int(task.get("total_steps") or 0)
+    status = task.get("status") or "coordinating"
+    progress = 1.0 if status == "completed" else (
+        min(0.95, current_step / total_steps) if total_steps else 0.0
+    )
+    plan = json.loads(task["plan_json"]) if task.get("plan_json") else None
+    return ResearchTaskResponse(
+        task_id=task["task_id"],
+        topic=task["topic"],
+        locale=task["locale"],
+        status=status,
+        phase=task.get("failed_phase") or status,
+        progress=progress,
+        current_step=current_step,
+        total_steps=total_steps,
+        report_id=f"rep_{task['task_id']}" if task.get("report_markdown") else None,
+        clarification_questions=json.loads(task.get("clarification_json") or "[]"),
+        retryable=bool(task.get("retryable")),
+        error_code=task.get("error_code") or "",
+        error_message=task.get("error_message") or "",
+        last_event_seq=get_last_event_sequence(task["task_id"]),
+        plan=plan,
+        created_at=task["created_at"],
+        updated_at=task["updated_at"],
+    )

@@ -20,8 +20,10 @@ from contextlib import asynccontextmanager
 
 from backend.app.config import CORS_ORIGINS
 from backend.app.core import db
-from backend.app.core.auth import ensure_demo_user
+from backend.app.core.auth import cleanup_expired_sessions, ensure_demo_user
 from backend.app.core.db import init_db
+from backend.app.core.job_queue import start_job_worker, stop_job_worker
+from backend.app.services.job_handlers import register_handlers
 from backend.app.api.routes import (
     artifacts,
     auth,
@@ -29,6 +31,7 @@ from backend.app.api.routes import (
     knowledge,
     report,
     research,
+    system,
     templates,
     tools,
     workflows,
@@ -41,8 +44,12 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化数据库"""
     init_db()
     ensure_demo_user()
+    cleanup_expired_sessions()
+    register_handlers()
+    await start_job_worker()
     print(f"Database initialized at: {db.get_db_path()}")
     yield
+    await stop_job_worker()
 
 
 app = FastAPI(
@@ -63,6 +70,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(research.router)
+app.include_router(system.router)
 app.include_router(events.router)
 app.include_router(report.router)
 app.include_router(artifacts.router)

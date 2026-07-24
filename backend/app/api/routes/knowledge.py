@@ -1,6 +1,6 @@
 """Knowledge base API with lightweight SQLite vector retrieval."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from backend.app.core.db import (
     delete_knowledge_document,
@@ -11,12 +11,12 @@ from backend.app.core.db import (
 from backend.app.core.auth import require_login
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import knowledge_upload_max_bytes, knowledge_write_rate_limit
+from backend.app.core.job_queue import enqueue_job
 from backend.app.models.schemas import KnowledgeDocumentRequest
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import (
-    ingest_text_document,
-    ingest_uploaded_document,
-    reindex_document,
+    queue_text_document,
+    queue_uploaded_document,
     search_knowledge_chunks,
 )
 
@@ -28,38 +28,44 @@ async def list_documents(limit: int = 50, offset: int = 0, user: dict = Depends(
     return [_public_doc(doc) for doc in list_knowledge_documents(limit=limit, offset=offset, user_id=user["user_id"])]
 
 
-@router.post("")
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(require_login)):
     check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
     try:
-        doc = ingest_text_document(
+        doc = queue_text_document(
             title=req.title,
             content=req.content,
             source_name=req.source_name,
             source_type=req.source_type,
             user_id=user["user_id"],
         )
-    except EmbeddingError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    enqueue_job(
+        "knowledge_index",
+        user_id=user["user_id"],
+        payload={"doc_id": doc["doc_id"]},
+    )
     return _public_doc(doc)
 
 
-@router.post("/upload")
+@router.post("/upload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(file: UploadFile = File(...), user: dict = Depends(require_login)):
     raw = await file.read()
     if len(raw) > knowledge_upload_max_bytes():
         raise HTTPException(status_code=413, detail="Uploaded knowledge document is too large for this demo")
     check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
     try:
-        doc = ingest_uploaded_document(file.filename or "knowledge.txt", raw, user_id=user["user_id"])
+        doc = queue_uploaded_document(file.filename or "knowledge.txt", raw, user_id=user["user_id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except EmbeddingError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    enqueue_job(
+        "knowledge_index",
+        user_id=user["user_id"],
+        payload={"doc_id": doc["doc_id"]},
+    )
     return _public_doc(doc)
 
 
@@ -94,16 +100,24 @@ async def get_document_chunks(doc_id: str, user: dict = Depends(require_login)):
     return [_public_chunk(chunk, include_score=False) for chunk in list_knowledge_chunks(doc_id, user_id=user["user_id"])]
 
 
-@router.post("/{doc_id}/reindex")
+@router.post("/{doc_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
 async def reindex(doc_id: str, user: dict = Depends(require_login)):
-    try:
-        doc = reindex_document(doc_id, user_id=user["user_id"])
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except EmbeddingError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    doc = get_knowledge_document(doc_id, user_id=user["user_id"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    from backend.app.core.db import update_knowledge_document
+    doc = update_knowledge_document(
+        doc_id,
+        owner_user_id=user["user_id"],
+        status="pending",
+        error_message="",
+        chunk_count=0,
+    )
+    enqueue_job(
+        "knowledge_index",
+        user_id=user["user_id"],
+        payload={"doc_id": doc_id},
+    )
     return _public_doc(doc)
 
 

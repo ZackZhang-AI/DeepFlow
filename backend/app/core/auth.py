@@ -70,6 +70,14 @@ def get_user_from_token(token: str) -> Optional[dict]:
     return db.get_user_by_id(session["user_id"])
 
 
+def revoke_token(token: str) -> bool:
+    return db.delete_auth_session(_hash_token(token))
+
+
+def cleanup_expired_sessions() -> int:
+    return db.delete_expired_auth_sessions(datetime.now(timezone.utc).isoformat())
+
+
 def require_login(user: Annotated[Optional[dict], Depends(get_current_user)]) -> dict:
     if user is None:
         raise HTTPException(

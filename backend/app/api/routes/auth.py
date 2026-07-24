@@ -4,13 +4,21 @@ import sqlite3
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend.app.core.auth import create_bearer_token, hash_password, require_login, verify_password
+from backend.app.core.auth import (
+    create_bearer_token,
+    hash_password,
+    require_login,
+    revoke_token,
+    verify_password,
+)
 from backend.app.core.db import create_user, get_user_by_username
 from backend.app.core.runtime_config import public_registration_allowed
 from backend.app.models.schemas import AuthResponse, LoginRequest, RegisterRequest, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+bearer = HTTPBearer()
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
@@ -51,6 +59,15 @@ async def login(req: LoginRequest):
 @router.get("/me", response_model=UserResponse)
 async def me(user: dict = Depends(require_login)):
     return _user_response(user)
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    _user: dict = Depends(require_login),
+):
+    revoke_token(credentials.credentials)
+    return None
 
 
 def _auth_response(user: dict, token: str, expires_at: str) -> AuthResponse:
