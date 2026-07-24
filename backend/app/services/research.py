@@ -32,6 +32,7 @@ from backend.app.core.db import (
 from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
+from backend.app.core.runtime_config import sandbox_tool_disabled
 
 logger = logging.getLogger("deepflow.backend")
 
@@ -157,7 +158,8 @@ async def execute_research_task(task_id: str):
                 continue
             update_task(task_id, current_step=step_num)
 
-            step_kind = "search" if step.need_search else "code"
+            use_researcher = step.need_search or sandbox_tool_disabled()
+            step_kind = "search" if use_researcher else "code"
             await emitter.emit(
                 "step.started",
                 step_index=step_num,
@@ -166,7 +168,7 @@ async def execute_research_task(task_id: str):
                 total_steps=len(plan.steps),
             )
 
-            if step.need_search:
+            if use_researcher:
                 local_refs = _build_local_references(
                     step.title + "\n" + step.description,
                     user_id=task.get("user_id"),
@@ -187,13 +189,13 @@ async def execute_research_task(task_id: str):
                     previous_findings=findings,
                 )
             tool_calls = (
-                _build_research_tool_calls(finding, len(local_refs) if step.need_search else 0)
-                if step.need_search
+                _build_research_tool_calls(finding, len(local_refs))
+                if use_researcher
                 else [{"tool": "python_sandbox", "count": 1}]
             )
             save_agent_run(
                 task_id=task_id,
-                agent_name="Researcher" if step.need_search else "Coder",
+                agent_name="Researcher" if use_researcher else "Coder",
                 phase=f"step_{step_num}",
                 status="completed",
                 input_summary=f"{step.title}\n{step.description}",
