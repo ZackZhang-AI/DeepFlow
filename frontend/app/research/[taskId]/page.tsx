@@ -171,7 +171,7 @@ export default function ResearchTaskPage() {
     setBusy(true);
     setLoadError(null);
     try {
-      lastSequenceRef.current = Math.max(lastSequenceRef.current, task.last_event_seq || 0);
+      lastSequenceRef.current = Math.max(lastSequenceRef.current, task?.last_event_seq || 0);
       await retryResearchTask(taskId);
       await loadTask();
       reconnect();

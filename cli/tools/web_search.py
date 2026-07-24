@@ -11,6 +11,12 @@ from cli.config import Config
 from cli.models import SearchResult
 
 logger = logging.getLogger(__name__)
+_PLACEHOLDER_MARKERS = ("your-", "your_", "replace", "changeme", "example")
+
+
+def _usable_key(value: str) -> bool:
+    lowered = value.strip().lower()
+    return bool(lowered) and not any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
 
 
 async def web_search(
@@ -27,7 +33,7 @@ async def web_search(
     备用搜索源: SerpAPI
     """
     query = _apply_search_constraints(query, include_domains, recency_days)
-    if Config.TAVILY_API_KEY:
+    if _usable_key(Config.TAVILY_API_KEY):
         try:
             results = _filter_domains(
                 await _tavily_search(query, max_results, include_raw_content),
@@ -39,7 +45,7 @@ async def web_search(
         except Exception as e:
             logger.warning(f"Tavily 搜索失败: {e}，尝试降级到 SerpAPI")
 
-    if Config.SERPAPI_API_KEY:
+    if _usable_key(Config.SERPAPI_API_KEY):
         try:
             return _filter_domains(await _serpapi_search(query, max_results), include_domains)
         except Exception as e:

@@ -75,6 +75,7 @@ def init_db() -> None:
             clarification_json TEXT DEFAULT '[]',
             search_domains_json TEXT DEFAULT '[]',
             recency_days INTEGER,
+            max_steps INTEGER DEFAULT 5,
             attempt_count INTEGER DEFAULT 0,
             error_code TEXT DEFAULT '',
             error_message TEXT DEFAULT '',
@@ -336,6 +337,7 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "retryable", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "last_heartbeat_at", "TEXT")
     _ensure_column(conn, "research_tasks", "failed_phase", "TEXT DEFAULT ''")
+    _ensure_column(conn, "research_tasks", "max_steps", "INTEGER DEFAULT 5")
     _ensure_column(conn, "knowledge_documents", "workspace_id", "TEXT")
     _ensure_column(conn, "knowledge_documents", "project_id", "TEXT")
     _ensure_column(conn, "artifacts", "workspace_id", "TEXT")
@@ -477,14 +479,15 @@ def create_task(
     user_id: str = LOCAL_DEFAULT_USER_ID,
     workspace_id: str | None = None,
     project_id: str | None = None,
+    max_steps: int = 5,
 ) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
     conn.execute(
         """INSERT INTO research_tasks
            (task_id, user_id, topic, locale, status, search_domains_json, recency_days,
-            workspace_id, project_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?)""",
+            workspace_id, project_id, max_steps, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?)""",
         (
             task_id,
             user_id,
@@ -494,6 +497,7 @@ def create_task(
             recency_days,
             workspace_id,
             project_id,
+            max_steps,
             now,
             now,
         ),

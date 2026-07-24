@@ -56,6 +56,7 @@ async def create_research_task(
         user_id=user["user_id"],
         workspace_id=req.workspace_id,
         project_id=req.project_id,
+        max_steps=max_steps,
     )
 
     clarification_questions = _build_clarification_questions(req.topic)
@@ -130,7 +131,11 @@ async def answer_clarifications(
         "research_plan",
         task_id=task_id,
         user_id=user["user_id"],
-        payload={"topic": enriched_topic, "locale": task["locale"]},
+        payload={
+            "topic": enriched_topic,
+            "locale": task["locale"],
+            "max_steps": int(task.get("max_steps") or Config.MAX_STEPS),
+        },
     )
 
     return ResearchTaskResponse(

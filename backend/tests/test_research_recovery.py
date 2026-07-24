@@ -90,3 +90,22 @@ def test_report_removes_sources_not_recorded_by_researcher():
     assert "https://example.com/source" in cleaned
     assert "kb://doc_1#chunk_1" in cleaned
     assert "invalid.example" not in cleaned
+
+
+def test_research_budget_survives_clarification_checkpoint(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    task = db.create_task(
+        "task_budget",
+        "budget persistence",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        max_steps=2,
+    )
+    assert task["max_steps"] == 2
+
+
+def test_placeholder_provider_key_is_not_usable():
+    from cli.tools.web_search import _usable_key
+
+    assert _usable_key("tvly-real-value")
+    assert not _usable_key("your-serpapi-api-key")
+    assert not _usable_key("")
