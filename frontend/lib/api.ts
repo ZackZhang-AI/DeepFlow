@@ -504,6 +504,7 @@ export function subscribeToEvents(
     "step.completed",
     "report.started",
     "report.completed",
+    "job.retrying",
     "error.fatal",
   ];
 

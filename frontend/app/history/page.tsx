@@ -2,6 +2,7 @@
 
 import { KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   clearAuthToken,
   downloadWithAuth,
@@ -102,6 +103,7 @@ function getArtifactTypeLabel(type: string) {
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AssetTab>("tasks");
   const [tasks, setTasks] = useState<ResearchTask[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactAsset[]>([]);
@@ -179,7 +181,7 @@ export default function HistoryPage() {
     }
   };
 
-  const openTask = (task: ResearchTask) => {
+  const previewTask = (task: ResearchTask) => {
     const action = STATUS_META[task.status]?.action ?? "progress";
     if (action === "report") {
       void viewReport(task.task_id);
@@ -188,6 +190,10 @@ export default function HistoryPage() {
     setSelectedTaskId(task.task_id);
     setSelectedPanel(action);
     setReport(null);
+  };
+
+  const openTask = (task: ResearchTask) => {
+    router.push(`/research/${task.task_id}`);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>, task: ResearchTask) => {
@@ -300,6 +306,16 @@ export default function HistoryPage() {
                             <StatusBadge status={task.status} />
                           </div>
                           <div className="mt-3 flex items-center justify-end border-t border-[var(--border)] pt-3">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                previewTask(task);
+                              }}
+                            >
+                              快速预览
+                            </Button>
                             <Button
                               variant={getTaskActionVariant(task)}
                               size="sm"
