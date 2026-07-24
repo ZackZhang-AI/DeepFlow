@@ -21,6 +21,7 @@ from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import research_task_rate_limit
 from backend.app.core.readiness import require_research_providers
+from backend.app.core.access import require_scope_access, require_task_access
 from backend.app.core.events import get_last_event_sequence
 from backend.app.core.job_queue import enqueue_job
 from cli.config import Config
@@ -36,6 +37,12 @@ async def create_research_task(
     """创建研究任务并启动后台计划生成，等待用户确认后执行。"""
     check_rate_limit("research.create", user["user_id"], research_task_rate_limit())
     require_research_providers()
+    require_scope_access(
+        user["user_id"],
+        req.workspace_id,
+        req.project_id,
+        write=True,
+    )
     max_steps = min(req.max_steps, Config.MAX_STEPS)
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
@@ -47,6 +54,8 @@ async def create_research_task(
         search_domains=req.search_domains,
         recency_days=req.recency_days,
         user_id=user["user_id"],
+        workspace_id=req.workspace_id,
+        project_id=req.project_id,
     )
 
     clarification_questions = _build_clarification_questions(req.topic)
@@ -89,9 +98,7 @@ async def create_research_task(
 @router.get("/{task_id}", response_model=ResearchTaskResponse)
 async def get_research_task(task_id: str, user: dict = Depends(require_login)):
     """查询研究任务状态"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"])
     return _task_response(task)
 
 
@@ -109,9 +116,7 @@ async def answer_clarifications(
     user: dict = Depends(require_login),
 ):
     """提交澄清回答，并启动计划生成。"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
     if task["status"] != "clarifying":
         raise HTTPException(status_code=400, detail=f"当前状态不需要澄清: {task['status']}")
 
@@ -120,7 +125,7 @@ async def answer_clarifications(
     if answers:
         enriched_topic += "\n\n用户补充信息：\n" + "\n".join(f"- {answer}" for answer in answers)
 
-    task = update_task(task_id, owner_user_id=user["user_id"], topic=enriched_topic, status="coordinating")
+    task = update_task(task_id, topic=enriched_topic, status="coordinating")
     enqueue_job(
         "research_plan",
         task_id=task_id,
@@ -144,28 +149,25 @@ async def answer_clarifications(
 @router.get("/{task_id}/agent-runs", response_model=list[AgentRunResponse])
 async def get_agent_runs(task_id: str, user: dict = Depends(require_login)):
     """查看某个任务的 Agent 执行日志。"""
-    if get_task(task_id, user_id=user["user_id"]) is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return list_agent_runs(task_id, user_id=user["user_id"])
+    task = require_task_access(task_id, user["user_id"])
+    return list_agent_runs(task_id, user_id=task["user_id"])
 
 
 @router.post("/{task_id}/confirm-plan")
 async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depends(require_login)):
     """确认、拒绝或轻量修改研究计划。"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
 
     if req.action == "accept":
         if not task.get("plan_json"):
             raise HTTPException(status_code=400, detail="研究计划尚未生成")
         if task["status"] not in ("awaiting_confirmation", "failed"):
             raise HTTPException(status_code=400, detail=f"当前状态不能确认计划: {task['status']}")
-        update_task(task_id, owner_user_id=user["user_id"], status="queued")
+        update_task(task_id, status="queued")
         enqueue_job("research_execute", task_id=task_id, user_id=user["user_id"])
         return {"status": "accepted", "task_id": task_id}
     elif req.action == "reject":
-        update_task(task_id, owner_user_id=user["user_id"], status="failed")
+        update_task(task_id, status="failed")
         emitter = get_event_manager(task_id)
         await emitter.emit("error.fatal", message="用户取消了研究计划")
         remove_event_manager(task_id)
@@ -180,7 +182,6 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depen
         plan.steps = [ResearchStep.model_validate(step) for step in req.modified_steps]
         update_task(
             task_id,
-            owner_user_id=user["user_id"],
             plan_json=json.dumps(plan.model_dump(), ensure_ascii=False),
             total_steps=len(plan.steps),
         )
@@ -191,9 +192,7 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depen
 
 @router.post("/{task_id}/retry")
 async def retry_research_task(task_id: str, user: dict = Depends(require_login)):
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
     if task["status"] != "failed":
         raise HTTPException(status_code=409, detail="只有失败任务可以重试")
     if not task.get("retryable"):
@@ -207,7 +206,6 @@ async def retry_research_task(task_id: str, user: dict = Depends(require_login))
         payload = {"topic": task["topic"], "locale": task["locale"]}
     update_task(
         task_id,
-        owner_user_id=user["user_id"],
         status="queued",
         error_code="",
         error_message="",

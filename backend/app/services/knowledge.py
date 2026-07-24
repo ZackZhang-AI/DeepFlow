@@ -101,6 +101,8 @@ def queue_text_document(
     source_name: str = "",
     source_type: str = "text",
     user_id: str = "local_default_user",
+    workspace_id: str | None = None,
+    project_id: str | None = None,
 ) -> dict:
     doc_id = f"doc_{uuid.uuid4().hex[:12]}"
     return save_knowledge_document(
@@ -112,10 +114,18 @@ def queue_text_document(
         status="pending",
         metadata={"ingest_mode": "text"},
         user_id=user_id,
+        workspace_id=workspace_id,
+        project_id=project_id,
     )
 
 
-def queue_uploaded_document(filename: str, raw: bytes, user_id: str) -> dict:
+def queue_uploaded_document(
+    filename: str,
+    raw: bytes,
+    user_id: str,
+    workspace_id: str | None = None,
+    project_id: str | None = None,
+) -> dict:
     if not raw:
         raise ValueError("File is empty")
     suffix = Path(filename or "").suffix.lower()
@@ -134,6 +144,8 @@ def queue_uploaded_document(filename: str, raw: bytes, user_id: str) -> dict:
         status="pending",
         metadata={"upload_path": str(stored_path), "file_type": suffix.lstrip(".") or "text"},
         user_id=user_id,
+        workspace_id=workspace_id,
+        project_id=project_id,
     )
 
 

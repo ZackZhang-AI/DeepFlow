@@ -73,3 +73,20 @@ def test_pending_text_document_can_be_processed(tmp_path, monkeypatch):
     ready = knowledge.process_pending_document(doc["doc_id"], db.LOCAL_DEFAULT_USER_ID)
     assert ready["status"] == "ready"
     assert ready["chunk_count"] > 0
+
+
+def test_report_removes_sources_not_recorded_by_researcher():
+    from cli.agents.reporter import _remove_unrecorded_links
+
+    report = (
+        "[Recorded](https://example.com/source) "
+        "[Invented](https://invalid.example/fake) "
+        "[Knowledge](kb://doc_1#chunk_1)"
+    )
+    cleaned = _remove_unrecorded_links(
+        report,
+        {"https://example.com/source", "kb://doc_1#chunk_1"},
+    )
+    assert "https://example.com/source" in cleaned
+    assert "kb://doc_1#chunk_1" in cleaned
+    assert "invalid.example" not in cleaned

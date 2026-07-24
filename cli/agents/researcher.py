@@ -94,21 +94,7 @@ async def research_step(
     logger.info(f"  搜索返回 {len(search_results)} 条结果")
 
     if not search_results and not local_references:
-        # 无搜索结果且无知识库命中时返回空发现
-        return (
-            ResearchFinding(
-                step_id=f"step_{step_index}",
-                step_title=step.title,
-                problem_statement=step.description,
-                findings_markdown="未能获取到相关搜索结果。",
-                conclusion="搜索失败，无法得出相关结论。",
-                references=[],
-                search_calls=len(queries),
-                crawl_calls=0,
-            ),
-            total_prompt,
-            total_completion,
-        )
+        raise RuntimeError("No search results were returned by the configured providers")
 
     # ---- Step 3: 深度抓取 (前 N 个结果) ----
     urls_to_crawl = [r.url for r in search_results[: Config.MAX_CRAWL_PAGES]]

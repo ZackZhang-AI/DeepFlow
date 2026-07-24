@@ -475,13 +475,16 @@ def create_task(
     search_domains: list[str] | None = None,
     recency_days: int | None = None,
     user_id: str = LOCAL_DEFAULT_USER_ID,
+    workspace_id: str | None = None,
+    project_id: str | None = None,
 ) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
     conn.execute(
         """INSERT INTO research_tasks
-           (task_id, user_id, topic, locale, status, search_domains_json, recency_days, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?)""",
+           (task_id, user_id, topic, locale, status, search_domains_json, recency_days,
+            workspace_id, project_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?)""",
         (
             task_id,
             user_id,
@@ -489,6 +492,8 @@ def create_task(
             locale,
             json.dumps(search_domains or [], ensure_ascii=False),
             recency_days,
+            workspace_id,
+            project_id,
             now,
             now,
         ),
@@ -611,14 +616,16 @@ def save_knowledge_document(
     error_message: str = "",
     metadata: dict | None = None,
     user_id: str = LOCAL_DEFAULT_USER_ID,
+    workspace_id: str | None = None,
+    project_id: str | None = None,
 ) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
     conn.execute(
         """INSERT OR REPLACE INTO knowledge_documents
            (doc_id, user_id, title, content, source_name, source_type, status, chunk_count,
-            error_message, metadata_json, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            error_message, metadata_json, workspace_id, project_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             doc_id,
             user_id,
@@ -630,6 +637,8 @@ def save_knowledge_document(
             chunk_count,
             error_message,
             json.dumps(metadata or {}, ensure_ascii=False),
+            workspace_id,
+            project_id,
             now,
             now,
         ),

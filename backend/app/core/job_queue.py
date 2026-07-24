@@ -15,6 +15,7 @@ from typing import Awaitable, Callable
 
 from backend.app.core.db import get_connection, update_task
 from backend.app.core.errors import classify_failure
+from backend.app.core.events import append_event
 
 JobHandler = Callable[[dict], Awaitable[None]]
 logger = logging.getLogger("deepflow.jobs")
@@ -110,6 +111,22 @@ def _finish_job(job: dict) -> None:
     conn.close()
 
 
+async def _heartbeat(job: dict) -> None:
+    while True:
+        await asyncio.sleep(5)
+        now = datetime.now().isoformat()
+        conn = get_connection()
+        conn.execute(
+            """UPDATE background_jobs SET heartbeat_at = ?, updated_at = ?
+               WHERE job_id = ? AND status = 'running'""",
+            (now, now, job["job_id"]),
+        )
+        conn.commit()
+        conn.close()
+        if job.get("task_id"):
+            update_task(job["task_id"], last_heartbeat_at=now)
+
+
 def _fail_job(job: dict, exc: BaseException) -> None:
     failure = classify_failure(exc)
     attempts = int(job["attempt_count"])
@@ -133,13 +150,33 @@ def _fail_job(job: dict, exc: BaseException) -> None:
     conn.commit()
     conn.close()
     if job.get("task_id"):
+        task_id = job["task_id"]
+        conn = get_connection()
+        task = conn.execute(
+            "SELECT status FROM research_tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        conn.close()
+        failed_phase = "reporting" if task and task["status"] == "generating_report" else (
+            "planning" if job["job_type"] == "research_plan" else "researching"
+        )
         update_task(
-            job["task_id"],
+            task_id,
             status="queued" if retryable else "failed",
             attempt_count=attempts,
             error_code=failure.code,
             error_message=failure.message[:2000],
             retryable=1 if retryable or failure.retryable else 0,
+            failed_phase=failed_phase,
+        )
+        append_event(
+            task_id,
+            "job.retrying" if retryable else "error.fatal",
+            {
+                "message": failure.message,
+                "error_code": failure.code,
+                "retryable": failure.retryable,
+                "attempt": attempts,
+            },
         )
 
 
@@ -166,7 +203,15 @@ async def _worker_loop() -> None:
                     error_code="",
                     error_message="",
                 )
-            await handler(job)
+            heartbeat_task = asyncio.create_task(_heartbeat(job))
+            try:
+                await handler(job)
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
             _finish_job(job)
         except asyncio.CancelledError:
             raise

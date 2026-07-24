@@ -10,6 +10,7 @@ Reporter Agent — 汇总所有研究发现，生成结构化 Markdown 报告
 """
 
 import logging
+import re
 from datetime import datetime
 
 from cli.config import Config
@@ -79,7 +80,18 @@ async def generate_report(
         logger.info("主模型输出过短，尝试备用模型...")
         return await generate_report(plan, findings, locale, report_style, use_fallback_model=True)
 
+    allowed_urls = {ref.url for finding in findings for ref in finding.references}
+    response = _remove_unrecorded_links(response, allowed_urls)
     return response, prompt_tokens, completion_tokens
+
+
+def _remove_unrecorded_links(markdown: str, allowed_urls: set[str]) -> str:
+    """Keep report links limited to sources recorded by Researcher."""
+    def replace(match: re.Match[str]) -> str:
+        label, url = match.group(1), match.group(2).strip()
+        return match.group(0) if url in allowed_urls else label
+
+    return re.sub(r"\[([^\]]+)\]\((https?://[^)]+|kb://[^)]+)\)", replace, markdown)
 
 
 def _get_style_instructions(style: str, locale: str) -> str:

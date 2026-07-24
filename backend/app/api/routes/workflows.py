@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -13,14 +12,13 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
 from backend.app.core.db import get_connection
-from backend.app.core.runtime_config import sandbox_tool_disabled
-from backend.app.services.tools import test_tool
-from cli.tools.sandbox import execute_python
+from backend.app.services.workflow_runner import (
+    SUPPORTED_NODE_TYPES,
+    apply_feedback,
+    execute_workflow,
+)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
-
-SUPPORTED_NODE_TYPES = {"Planner", "Researcher", "Coder", "Reporter", "Artifact", "Human Feedback", "MCP Tool"}
-
 
 class WorkflowRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
@@ -32,6 +30,10 @@ class WorkflowRequest(BaseModel):
 
 class RunWorkflowRequest(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResumeWorkflowRequest(BaseModel):
+    feedback: Any
 
 
 @router.get("")
@@ -140,44 +142,100 @@ async def run_workflow(workflow_id: str, req: RunWorkflowRequest, user: dict = D
     conn.commit()
     conn.close()
 
-    outputs: dict[str, Any] = {}
-    trace: list[dict[str, Any]] = []
-    status = "completed"
-    error = ""
     try:
         nodes = json.loads(workflow["nodes_json"] or "[]")
         budget = json.loads(workflow["budget_json"] or "{}")
-        max_steps = int(budget.get("max_steps") or len(nodes) or 1)
-        for index, node in enumerate(nodes[:max_steps]):
-            node_result = await _run_node(node, req.input, outputs, user, workflow_id, run_id)
-            outputs[node_result["node_id"]] = node_result["output"]
-            trace.append(node_result)
-            if node_result["status"] == "failed":
-                retries = int(node.get("retry") or budget.get("retries") or 0)
-                if retries > 0:
-                    retry_result = await _run_node(node, req.input, outputs, user, workflow_id, run_id, attempt=2)
-                    outputs[f"{node_result['node_id']}:retry"] = retry_result["output"]
-                    trace.append(retry_result)
-                    if retry_result["status"] == "completed":
-                        continue
-                status = "failed"
-                error = node_result.get("error", "")
-                break
+        final = await execute_workflow(
+            nodes=nodes,
+            workflow_input=req.input,
+            user=user,
+            workflow_id=workflow_id,
+            run_id=run_id,
+            budget=budget,
+        )
     except Exception as exc:
-        status = "failed"
-        error = str(exc)
+        final = {
+            "status": "failed",
+            "outputs": {},
+            "trace": [],
+            "next_node_index": 0,
+            "token_usage": 0,
+            "execution_mode": "sequential",
+            "edges_applied": False,
+            "error": str(exc),
+        }
 
-    final = {"outputs": outputs, "trace": trace}
     conn = get_connection()
     conn.execute(
         """UPDATE workflow_runs SET status = ?, outputs_json = ?, error = ?, updated_at = ?
            WHERE run_id = ? AND user_id = ?""",
-        (status, json.dumps(final, ensure_ascii=False), error[:2000], datetime.now().isoformat(), run_id, user["user_id"]),
+        (
+            final["status"],
+            json.dumps(final, ensure_ascii=False),
+            str(final.get("error") or "")[:2000],
+            datetime.now().isoformat(),
+            run_id,
+            user["user_id"],
+        ),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM workflow_runs WHERE run_id = ?", (run_id,)).fetchone()
     conn.close()
     return _public_run(dict(row))
+
+
+@router.post("/runs/{run_id}/resume")
+async def resume_workflow_run(
+    run_id: str,
+    req: ResumeWorkflowRequest,
+    user: dict = Depends(require_login),
+):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM workflow_runs WHERE run_id = ? AND user_id = ?",
+        (run_id, user["user_id"]),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    run = dict(row)
+    if run["status"] != "waiting_feedback":
+        raise HTTPException(status_code=409, detail="Workflow run is not waiting for feedback")
+
+    workflow = _get_workflow(run["workflow_id"], user["user_id"])
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    checkpoint = apply_feedback(json.loads(run.get("outputs_json") or "{}"), req.feedback)
+    workflow_input = json.loads(run.get("input_json") or "{}")
+    workflow_input["human_feedback"] = checkpoint["feedback"]
+    final = await execute_workflow(
+        nodes=json.loads(workflow["nodes_json"] or "[]"),
+        workflow_input=workflow_input,
+        user=user,
+        workflow_id=workflow["workflow_id"],
+        run_id=run_id,
+        budget=json.loads(workflow["budget_json"] or "{}"),
+        checkpoint=checkpoint,
+        start_index=checkpoint["next_node_index"],
+    )
+
+    conn = get_connection()
+    conn.execute(
+        """UPDATE workflow_runs SET status = ?, outputs_json = ?, error = ?, updated_at = ?
+           WHERE run_id = ? AND user_id = ?""",
+        (
+            final["status"],
+            json.dumps(final, ensure_ascii=False),
+            str(final.get("error") or "")[:2000],
+            datetime.now().isoformat(),
+            run_id,
+            user["user_id"],
+        ),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM workflow_runs WHERE run_id = ?", (run_id,)).fetchone()
+    conn.close()
+    return _public_run(dict(updated))
 
 
 @router.get("/{workflow_id}/runs")
@@ -208,130 +266,6 @@ async def get_workflow_trace(run_id: str, user: dict = Depends(require_login)):
     return [dict(row) for row in rows]
 
 
-async def _run_node(
-    node: dict[str, Any],
-    workflow_input: dict[str, Any],
-    outputs: dict[str, Any],
-    user: dict,
-    workflow_id: str,
-    run_id: str,
-    attempt: int = 1,
-) -> dict[str, Any]:
-    started = time.perf_counter()
-    node_id = str(node.get("id") or f"node_{uuid.uuid4().hex[:8]}")
-    node_type = str(node.get("type") or "")
-    config = node.get("config") or {}
-    input_summary = f"attempt={attempt}; keys={','.join(workflow_input.keys())}; prior_nodes={len(outputs)}"
-    status = "completed"
-    error = ""
-    tool_calls: list[dict[str, Any]] = []
-    try:
-        if node_type == "Planner":
-            output = {"plan": config.get("plan") or ["clarify", "research", "report"], "topic": workflow_input.get("topic", "")}
-        elif node_type == "Researcher":
-            output = {"summary": config.get("summary") or f"Research node received topic: {workflow_input.get('topic', '')}"}
-        elif node_type == "Coder":
-            if sandbox_tool_disabled():
-                status = "failed"
-                error = "Python sandbox is disabled for this demo"
-                output = {"stdout": "", "stderr": error, "success": False}
-                tool_calls.append({"tool": "python_sandbox", "elapsed_seconds": 0, "success": False})
-            else:
-                code = str(config.get("code") or workflow_input.get("code") or "print('DeepFlow workflow coder node')")
-                result = await execute_python(code, timeout=int(config.get("timeout") or 10))
-                output = {"stdout": result.stdout, "stderr": result.stderr, "success": result.success}
-                if not result.success:
-                    status = "failed"
-                    error = result.error or result.stderr
-                tool_calls.append({"tool": "python_sandbox", "elapsed_seconds": result.elapsed_seconds, "success": result.success})
-        elif node_type == "Reporter":
-            output = {"markdown": config.get("markdown") or _compose_report(workflow_input, outputs)}
-        elif node_type == "Artifact":
-            output = {"artifact_type": config.get("artifact_type", "markdown"), "content": config.get("content") or json.dumps(outputs, ensure_ascii=False)}
-        elif node_type == "Human Feedback":
-            output = {"pending": bool(config.get("pause", False)), "instruction": config.get("instruction", "")}
-        elif node_type == "MCP Tool":
-            tool_id = str(config.get("tool_id") or "")
-            tool_input = config.get("input") or workflow_input
-            result = await test_tool(tool_id, tool_input, user)
-            output = result
-            if not result.get("success"):
-                status = "failed"
-                error = result.get("error", "")
-            tool_calls.append({"tool": tool_id, "elapsed_seconds": result.get("elapsed_seconds", 0), "success": result.get("success")})
-        else:
-            status = "failed"
-            error = f"Unsupported node type: {node_type}"
-            output = {}
-    except Exception as exc:
-        status = "failed"
-        error = str(exc)
-        output = {}
-
-    elapsed = time.perf_counter() - started
-    output_summary = json.dumps(output, ensure_ascii=False)[:1000]
-    _save_node_trace(
-        run_id=run_id,
-        workflow_id=workflow_id,
-        user_id=user["user_id"],
-        node_id=node_id,
-        node_type=node_type,
-        status=status,
-        input_summary=input_summary,
-        output_summary=output_summary,
-        tool_calls=tool_calls,
-        elapsed_seconds=elapsed,
-        error=error,
-    )
-    return {
-        "node_id": node_id,
-        "node_type": node_type,
-        "status": status,
-        "output": output,
-        "error": error,
-        "elapsed_seconds": round(elapsed, 3),
-    }
-
-
-def _save_node_trace(
-    run_id: str,
-    workflow_id: str,
-    user_id: str,
-    node_id: str,
-    node_type: str,
-    status: str,
-    input_summary: str,
-    output_summary: str,
-    tool_calls: list[dict[str, Any]],
-    elapsed_seconds: float,
-    error: str,
-) -> None:
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO workflow_node_runs
-           (node_run_id, run_id, workflow_id, user_id, node_id, node_type, status,
-            input_summary, output_summary, tool_calls_json, elapsed_seconds, error, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            f"wfn_{uuid.uuid4().hex[:12]}",
-            run_id,
-            workflow_id,
-            user_id,
-            node_id,
-            node_type,
-            status,
-            input_summary[:2000],
-            output_summary[:4000],
-            json.dumps(tool_calls, ensure_ascii=False),
-            elapsed_seconds,
-            error[:2000],
-            datetime.now().isoformat(),
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-
 def _get_workflow(workflow_id: str, user_id: str) -> dict | None:
     conn = get_connection()
     row = conn.execute(
@@ -358,6 +292,8 @@ def _public_workflow(row: dict) -> dict:
         "nodes": json.loads(row.get("nodes_json") or "[]"),
         "edges": json.loads(row.get("edges_json") or "[]"),
         "budget": json.loads(row.get("budget_json") or "{}"),
+        "execution_mode": "sequential",
+        "edges_applied": False,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -375,8 +311,3 @@ def _public_run(row: dict) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
-
-
-def _compose_report(workflow_input: dict[str, Any], outputs: dict[str, Any]) -> str:
-    topic = workflow_input.get("topic") or "Workflow Report"
-    return f"# {topic}\n\n## Workflow Outputs\n\n```json\n{json.dumps(outputs, ensure_ascii=False, indent=2)}\n```\n"

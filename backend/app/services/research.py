@@ -29,7 +29,6 @@ from backend.app.core.db import (
     list_steps,
     save_agent_run,
 )
-from backend.app.core.errors import classify_failure
 from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
@@ -46,7 +45,6 @@ async def generate_research_plan_task(
     """后台生成研究计划，等待用户确认后再执行。"""
     emitter = get_event_manager(task_id)
     started_at = time.time()
-    errors: list[str] = []
 
     try:
         await emitter.emit("coordinator.started", task_id=task_id)
@@ -93,19 +91,6 @@ async def generate_research_plan_task(
 
     except Exception as e:
         logger.exception(f"研究计划生成失败: {task_id}")
-        errors.append(str(e))
-        failure = classify_failure(e)
-        update_task(
-            task_id,
-            status="failed",
-            failed_phase="planning",
-            error_code=failure.code,
-            error_message=failure.message,
-            retryable=1 if failure.retryable else 0,
-            errors_json=errors,
-        )
-        await emitter.emit("error.fatal", message=str(e))
-        remove_event_manager(task_id)
         raise
 
 
@@ -119,7 +104,6 @@ async def execute_research_task(task_id: str):
     total_completion = 0
     total_search_calls = 0
     total_crawl_calls = 0
-    errors: list[str] = []
     started_at = time.time()
 
     try:
@@ -300,19 +284,6 @@ async def execute_research_task(task_id: str):
 
     except Exception as e:
         logger.exception(f"研究任务失败: {task_id}")
-        errors.append(str(e))
-        task = get_task(task_id) or {}
-        failure = classify_failure(e)
-        update_task(
-            task_id,
-            status="failed",
-            failed_phase="reporting" if task.get("status") == "generating_report" else "researching",
-            error_code=failure.code,
-            error_message=failure.message,
-            retryable=1 if failure.retryable else 0,
-            errors_json=errors,
-        )
-        await emitter.emit("error.fatal", message=str(e))
         raise
 
     finally:

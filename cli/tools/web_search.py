@@ -29,10 +29,13 @@ async def web_search(
     query = _apply_search_constraints(query, include_domains, recency_days)
     if Config.TAVILY_API_KEY:
         try:
-            return _filter_domains(
+            results = _filter_domains(
                 await _tavily_search(query, max_results, include_raw_content),
                 include_domains,
             )
+            if results:
+                return results
+            logger.warning("Tavily returned no results; trying SerpAPI")
         except Exception as e:
             logger.warning(f"Tavily 搜索失败: {e}，尝试降级到 SerpAPI")
 

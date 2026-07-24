@@ -236,14 +236,14 @@ def test_prd_extension_smoke(monkeypatch, tmp_path):
 
         workflow = client.post(
             "/api/workflows",
-            json={
-                "name": "Simple PRD Workflow",
-                "description": "planner reporter",
-                "nodes": [
-                    {"id": "plan", "type": "Planner", "config": {"plan": ["research", "report"]}},
-                    {"id": "report", "type": "Reporter", "config": {}},
-                ],
-                "edges": [{"from": "plan", "to": "report"}],
+                json={
+                    "name": "Simple PRD Workflow",
+                    "description": "sequential artifact smoke",
+                    "nodes": [
+                        {"id": "review", "type": "Human Feedback", "config": {"pause": False}},
+                        {"id": "artifact", "type": "Artifact", "config": {"content": "# Smoke"}},
+                    ],
+                    "edges": [{"from": "review", "to": "artifact"}],
                 "budget": {"max_steps": 3, "retries": 0},
             },
             headers=headers_a,
@@ -259,4 +259,4 @@ def test_prd_extension_smoke(monkeypatch, tmp_path):
         assert run.json()["status"] == "completed"
         trace = client.get(f"/api/workflows/runs/{run.json()['run_id']}/trace", headers=headers_a)
         assert trace.status_code == 200, trace.text
-        assert [item["node_type"] for item in trace.json()] == ["Planner", "Reporter"]
+        assert [item["node_type"] for item in trace.json()] == ["Human Feedback", "Artifact"]

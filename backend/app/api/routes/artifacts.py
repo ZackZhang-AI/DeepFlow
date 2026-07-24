@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.db import get_artifact, get_task, list_artifacts, save_artifact, save_report_version, update_task
 from backend.app.core.auth import require_login
+from backend.app.core.access import require_task_access
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import artifact_rate_limit
 from cli.config import Config
@@ -89,7 +90,7 @@ def get_tts_provider() -> TTSProvider:
 async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_login)):
     """将报告转化为播客脚本"""
     check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
-    task = get_task(req.task_id, user_id=user["user_id"])
+    task = require_task_access(req.task_id, user["user_id"], write=True)
     if not task or not task.get("report_markdown"):
         raise HTTPException(status_code=404, detail="报告不存在")
 
@@ -132,7 +133,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
             title=f"{script.title}.wav",
             content=str(audio_path),
             metadata={"locale": req.locale, "format": "wav", "tts_provider": tts_provider.name},
-            user_id=user["user_id"],
+            user_id=task["user_id"],
         )
         audio_artifact_id = audio_artifact["artifact_id"]
         audio_url = f"/api/artifacts/download/{audio_artifact_id}"
@@ -153,7 +154,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
             "audio_error": audio_error,
             "tts_provider": tts_provider.name,
         },
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
 
     return {
@@ -175,7 +176,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
 async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)):
     check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """将报告转化为 PPT Markdown"""
-    task = get_task(req.task_id, user_id=user["user_id"])
+    task = require_task_access(req.task_id, user["user_id"], write=True)
     if not task or not task.get("report_markdown"):
         raise HTTPException(status_code=404, detail="报告不存在")
 
@@ -209,7 +210,7 @@ async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)
         title=f"{title}.pptx",
         content=str(pptx_path),
         metadata={"locale": req.locale, "format": "pptx"},
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
     markdown_artifact = save_artifact(
         artifact_id=f"art_{uuid.uuid4().hex[:12]}",
@@ -223,7 +224,7 @@ async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)
             "slides_count": slides.count("---") + 1,
             "pptx_artifact_id": pptx_artifact["artifact_id"],
         },
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
 
     return {
@@ -293,7 +294,7 @@ async def shorten_prose(req: ProsRequest, user: dict = Depends(require_login)):
 async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_login)):
     check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """用指定风格重新生成报告"""
-    task = get_task(req.task_id, user_id=user["user_id"])
+    task = require_task_access(req.task_id, user["user_id"], write=True)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -342,18 +343,17 @@ async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_logi
         title=f"{task['topic']} - {req.style}",
         content=report,
         metadata={"tokens": pt + ct, "locale": req.locale, "style": req.style},
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
     if task.get("report_markdown"):
         save_report_version(
             req.task_id,
             task["report_markdown"],
-            user_id=user["user_id"],
+            user_id=task["user_id"],
             change_note=f"切换报告风格前版本: {req.style}",
         )
     update_task(
         req.task_id,
-        owner_user_id=user["user_id"],
         report_markdown=report,
         tokens_used=(task.get("tokens_used") or 0) + pt + ct,
     )
@@ -404,9 +404,8 @@ async def artifact_detail(artifact_id: str, user: dict = Depends(require_login))
 @router.get("/{task_id}")
 async def list_task_artifacts(task_id: str, user: dict = Depends(require_login)):
     """列出某个任务已生成的成果物"""
-    if not get_task(task_id, user_id=user["user_id"]):
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return [_serialize_artifact(artifact) for artifact in list_artifacts(task_id, user_id=user["user_id"])]
+    task = require_task_access(task_id, user["user_id"])
+    return [_serialize_artifact(artifact) for artifact in list_artifacts(task_id, user_id=task["user_id"])]
 
 
 def _write_pptx(slides_markdown: str, title: str, output_path: Path) -> None:

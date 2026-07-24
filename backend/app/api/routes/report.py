@@ -11,6 +11,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from backend.app.models.schemas import ReportResponse, RewriteRequest, SaveReportRequest
 from backend.app.core.auth import require_login
+from backend.app.core.access import require_task_access
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import artifact_rate_limit
 from backend.app.core.db import (
@@ -27,9 +28,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/{task_id}", response_model=ReportResponse)
 async def get_report(task_id: str, user: dict = Depends(require_login)):
     """获取研究报告"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"])
     if task["status"] != "completed":
         raise HTTPException(status_code=400, detail="研究尚未完成")
     if not task["report_markdown"]:
@@ -59,9 +58,7 @@ async def get_report(task_id: str, user: dict = Depends(require_login)):
 @router.patch("/{task_id}")
 async def save_report(task_id: str, req: SaveReportRequest, user: dict = Depends(require_login)):
     """保存报告编辑，并记录版本"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
     if not task.get("report_markdown"):
         raise HTTPException(status_code=404, detail="报告尚未生成")
 
@@ -69,18 +66,17 @@ async def save_report(task_id: str, req: SaveReportRequest, user: dict = Depends
         task_id=task_id,
         content_markdown=task["report_markdown"],
         change_note=req.change_note,
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
-    update_task(task_id, owner_user_id=user["user_id"], report_markdown=req.content_markdown)
+    update_task(task_id, report_markdown=req.content_markdown)
     return {"status": "saved", "task_id": task_id, "previous_version_id": version_id}
 
 
 @router.get("/{task_id}/versions")
 async def versions(task_id: str, user: dict = Depends(require_login)):
     """列出报告版本"""
-    if get_task(task_id, user_id=user["user_id"]) is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return list_report_versions(task_id, user_id=user["user_id"])
+    task = require_task_access(task_id, user["user_id"])
+    return list_report_versions(task_id, user_id=task["user_id"])
 
 
 @router.get("/versions/{version_id}")
@@ -95,14 +91,12 @@ async def version_detail(version_id: str, user: dict = Depends(require_login)):
 @router.post("/{task_id}/versions/{version_id}/restore")
 async def restore_report_version(task_id: str, version_id: str, user: dict = Depends(require_login)):
     """恢复某个报告版本，并先备份当前报告。"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
     current = task.get("report_markdown") or ""
     if not current:
         raise HTTPException(status_code=404, detail="报告尚未生成")
 
-    version = get_report_version(version_id, user_id=user["user_id"])
+    version = get_report_version(version_id, user_id=task["user_id"])
     if version is None or version.get("task_id") != task_id:
         raise HTTPException(status_code=404, detail="版本不存在")
 
@@ -110,11 +104,10 @@ async def restore_report_version(task_id: str, version_id: str, user: dict = Dep
         task_id=task_id,
         content_markdown=current,
         change_note=f"恢复版本 {version_id} 前自动备份",
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
     update_task(
         task_id,
-        owner_user_id=user["user_id"],
         report_markdown=version["content_markdown"],
     )
     return {
@@ -129,9 +122,7 @@ async def restore_report_version(task_id: str, version_id: str, user: dict = Dep
 @router.get("/{task_id}/download")
 async def download_report(task_id: str, format: str = Query("markdown", pattern="^(markdown|md|pdf)$"), user: dict = Depends(require_login)):
     """下载报告文件"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"])
     if not task["report_markdown"]:
         raise HTTPException(status_code=404, detail="报告尚未生成")
 
@@ -161,9 +152,7 @@ async def download_report(task_id: str, format: str = Query("markdown", pattern=
 async def rewrite_report_section(task_id: str, req: RewriteRequest, user: dict = Depends(require_login)):
     check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
     """按用户指令重写报告或某个章节，并保存版本"""
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = require_task_access(task_id, user["user_id"], write=True)
     current = task.get("report_markdown") or ""
     if not current:
         raise HTTPException(status_code=404, detail="报告尚未生成")
@@ -201,11 +190,10 @@ async def rewrite_report_section(task_id: str, req: RewriteRequest, user: dict =
         task_id=task_id,
         content_markdown=current,
         change_note=f"AI rewrite: {req.instruction[:80]}",
-        user_id=user["user_id"],
+        user_id=task["user_id"],
     )
     update_task(
         task_id,
-        owner_user_id=user["user_id"],
         report_markdown=rewritten,
         tokens_used=(task.get("tokens_used") or 0) + pt + ct,
     )

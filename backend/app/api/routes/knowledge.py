@@ -1,6 +1,6 @@
 """Knowledge base API with lightweight SQLite vector retrieval."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from backend.app.core.db import (
     delete_knowledge_document,
@@ -12,6 +12,7 @@ from backend.app.core.auth import require_login
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import knowledge_upload_max_bytes, knowledge_write_rate_limit
 from backend.app.core.job_queue import enqueue_job
+from backend.app.core.access import require_scope_access
 from backend.app.models.schemas import KnowledgeDocumentRequest
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import (
@@ -31,6 +32,12 @@ async def list_documents(limit: int = 50, offset: int = 0, user: dict = Depends(
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(require_login)):
     check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
+    require_scope_access(
+        user["user_id"],
+        req.workspace_id,
+        req.project_id,
+        write=True,
+    )
     try:
         doc = queue_text_document(
             title=req.title,
@@ -38,6 +45,8 @@ async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(re
             source_name=req.source_name,
             source_type=req.source_type,
             user_id=user["user_id"],
+            workspace_id=req.workspace_id,
+            project_id=req.project_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -50,13 +59,25 @@ async def create_document(req: KnowledgeDocumentRequest, user: dict = Depends(re
 
 
 @router.post("/upload", status_code=status.HTTP_202_ACCEPTED)
-async def upload_document(file: UploadFile = File(...), user: dict = Depends(require_login)):
+async def upload_document(
+    file: UploadFile = File(...),
+    workspace_id: str | None = Form(default=None),
+    project_id: str | None = Form(default=None),
+    user: dict = Depends(require_login),
+):
     raw = await file.read()
     if len(raw) > knowledge_upload_max_bytes():
         raise HTTPException(status_code=413, detail="Uploaded knowledge document is too large for this demo")
     check_rate_limit("knowledge.write", user["user_id"], knowledge_write_rate_limit())
+    require_scope_access(user["user_id"], workspace_id, project_id, write=True)
     try:
-        doc = queue_uploaded_document(file.filename or "knowledge.txt", raw, user_id=user["user_id"])
+        doc = queue_uploaded_document(
+            file.filename or "knowledge.txt",
+            raw,
+            user_id=user["user_id"],
+            workspace_id=workspace_id,
+            project_id=project_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

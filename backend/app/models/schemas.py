@@ -41,6 +41,8 @@ class CreateResearchRequest(BaseModel):
     max_steps: int = Field(default=5, ge=2, le=8, description="最大步骤数")
     search_domains: list[str] = Field(default_factory=list, description="优先或限定搜索域名")
     recency_days: Optional[int] = Field(default=None, ge=1, le=3650, description="优先检索最近 N 天内容")
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ResearchTaskResponse(BaseModel):
@@ -134,6 +136,8 @@ class KnowledgeDocumentRequest(BaseModel):
     content: str = Field(..., min_length=1)
     source_name: str = ""
     source_type: str = "text"
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class KnowledgeDocumentResponse(BaseModel):

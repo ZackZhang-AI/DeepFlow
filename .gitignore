@@ -28,3 +28,4 @@ runs/
 node_modules/
 .next/
 frontend/.next/
+.playwright-cli/

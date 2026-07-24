@@ -10,6 +10,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 - 用户注册、登录、会话鉴权。
 - 创建研究任务，支持澄清问题、研究计划生成、计划确认。
+- 研究任务通过 SQLite 持久化队列执行，支持进程重启恢复、失败阶段重试和 SSE 事件重放。
 - 多 Agent 流程：Coordinator、Planner、Researcher、Coder、Reporter、Artifact。
 - SSE 进度事件与 Agent Trace。
 - 用户隔离：任务、报告、知识库、成果物默认只能由当前用户访问。
@@ -27,7 +28,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 ### Coder Agent 与 Python 沙箱
 
-- 支持 Python 代码生成与沙箱执行。
+- 支持 Python 代码生成与 Docker 沙箱执行；公共 API 不允许降级到本机 subprocess。
 - 执行超时、危险操作拦截、输出长度限制。
 - 错误捕获与简单自动修复入口。
 - Trace 记录代码工具调用、耗时、错误和结果摘要。
@@ -71,7 +72,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 - 基于当前 Python 状态机的配置式工作流，不迁移 LangGraph。
 - 支持节点：Planner、Researcher、Coder、Reporter、Artifact、Human Feedback、MCP Tool。
-- 支持顺序执行、失败重试、预算限制、运行记录和节点 Trace。
+- 支持顺序执行、失败重试、预算限制、Human Feedback 暂停/继续、运行记录和节点 Trace。
 - 前端 `/workflows` 页面。
 
 ## 技术栈
@@ -144,7 +145,8 @@ http://localhost:3000
 | 页面 | 说明 |
 | --- | --- |
 | `/login` | 登录与注册 |
-| `/` | 研究工作台 |
+| `/` | 新建研究与最近任务 |
+| `/research/[taskId]` | 可恢复的研究详情、计划、进度、来源和报告工作区 |
 | `/history` | 个人资产中心 |
 | `/tools` | MCP 工具管理 |
 | `/templates` | 研究模板 |
@@ -156,7 +158,9 @@ http://localhost:3000
 
 | 模块 | 代表接口 |
 | --- | --- |
-| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
+| System | `GET /api/system/readiness` |
+| Research | `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/retry`, `GET /api/research-tasks/{id}/events?after_seq=` |
 | Research | `POST /api/research-tasks`, `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/confirm-plan` |
 | Report | `GET /api/reports/{task_id}`, `PATCH /api/reports/{task_id}`, `GET /api/reports/{task_id}/download` |
 | Report Version | `GET /api/reports/{task_id}/versions`, `POST /api/reports/{task_id}/versions/{version_id}/restore` |
@@ -188,9 +192,10 @@ DeepFlow API
 ## 当前边界
 
 - 当前默认使用 SQLite，适合原型、MVP 和单机验证；大规模生产部署前建议评估 PostgreSQL/pgvector。
-- 工具启用状态目前为内存态，服务重启后恢复默认。
+- 工具启用状态按用户持久化到 SQLite。
 - 私域知识库已具备 PRD 所需检索闭环，但未引入 Milvus、MinIO、Celery、RAGAS 等 PRD 外企业栈。
-- 工作流为配置式可运行版本，未实现复杂低代码画布。
+- 工作流为顺序配置式可运行版本；`edges` 尚不参与条件分支执行。
+- 公共部署默认 `DISABLE_SANDBOX_TOOL=true`；只有 Docker readiness 正常时才应开启 Coder。
 - 云 TTS、计费、企业 SSO、复杂审批流不在当前 PRD 实现范围内。
 
 ## 项目结构

@@ -24,6 +24,7 @@ from backend.app.core.auth import cleanup_expired_sessions, ensure_demo_user
 from backend.app.core.db import init_db
 from backend.app.core.job_queue import start_job_worker, stop_job_worker
 from backend.app.services.job_handlers import register_handlers
+from backend.app.core.logging_config import configure_logging
 from backend.app.api.routes import (
     artifacts,
     auth,
@@ -42,6 +43,7 @@ from backend.app.api.routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化数据库"""
+    configure_logging()
     init_db()
     ensure_demo_user()
     cleanup_expired_sessions()
