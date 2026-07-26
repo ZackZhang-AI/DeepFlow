@@ -72,7 +72,6 @@ export default function ResearchTaskPage() {
     getTask(taskId)
       .then(async (nextTask) => {
         if (!active) return;
-        lastSequenceRef.current = Math.max(lastSequenceRef.current, nextTask.last_event_seq || 0);
         setTask(nextTask);
         if (nextTask.status === "completed") {
           const nextReport = await getReport(taskId);

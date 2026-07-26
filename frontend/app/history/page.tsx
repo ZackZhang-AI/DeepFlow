@@ -4,7 +4,6 @@ import { KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  clearAuthToken,
   downloadWithAuth,
   getAuthToken,
   getCurrentUser,
@@ -12,6 +11,7 @@ import {
   listKnowledgeDocuments,
   listResearchTasks,
   listTaskArtifacts,
+  logout,
   redirectToLogin,
 } from "@/lib/api";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
@@ -83,14 +83,7 @@ function formatDate(value?: string) {
 }
 
 function getFailureMessage(task: ResearchTask) {
-  if (!task.errors_json) return "该任务失败，暂时没有详细错误。请查看后端日志或重新发起研究。";
-  try {
-    const parsed = JSON.parse(task.errors_json) as unknown;
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed.join("\n");
-  } catch {
-    return task.errors_json;
-  }
-  return "该任务失败，暂时没有详细错误。";
+  return task.error_message || "该任务失败，暂时没有详细错误。请查看后端日志或重新发起研究。";
 }
 
 function getArtifactTypeLabel(type: string) {
@@ -203,9 +196,12 @@ export default function HistoryPage() {
     }
   };
 
-  const handleLogout = () => {
-    clearAuthToken();
-    redirectToLogin();
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      redirectToLogin();
+    }
   };
 
   const getTaskActionLabel = (task: ResearchTask) => {

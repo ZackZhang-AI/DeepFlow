@@ -17,7 +17,6 @@ const STATUS_META: Record<KnowledgeDocumentStatus, { label: string; className: s
   pending: { label: "待处理", className: "border-amber-200 bg-amber-50 text-amber-700" },
   processing: { label: "处理中", className: "border-cyan-200 bg-cyan-50 text-cyan-700" },
   ready: { label: "可检索", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-  completed: { label: "可检索", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   failed: { label: "失败", className: "border-red-200 bg-red-50 text-red-600" },
 };
 
@@ -188,7 +187,7 @@ export function KnowledgePanel() {
     }
   };
 
-  const ready = docs.filter((doc) => doc.status === "ready" || doc.status === "completed").length;
+  const ready = docs.filter((doc) => doc.status === "ready").length;
   const selectedDoc = docs.find((doc) => doc.doc_id === selectedDocId) ?? null;
 
   return (

@@ -137,7 +137,7 @@ export interface ProviderReadiness {
   database: ReadinessItem;
 }
 
-export type KnowledgeDocumentStatus = "pending" | "processing" | "ready" | "completed" | "failed";
+export type KnowledgeDocumentStatus = "pending" | "processing" | "ready" | "failed";
 
 export interface KnowledgeDocument {
   doc_id: string;

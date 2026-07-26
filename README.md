@@ -13,7 +13,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 - 研究任务通过 SQLite 持久化队列执行，支持进程重启恢复、失败阶段重试和 SSE 事件重放。
 - 多 Agent 流程：Coordinator、Planner、Researcher、Coder、Reporter、Artifact。
 - SSE 进度事件与 Agent Trace。
-- 用户隔离：任务、报告、知识库、成果物默认只能由当前用户访问。
+- 资源权限：个人资源按用户隔离；团队资源按 Workspace 的 owner/editor/viewer 角色访问。
 - 成本与预算控制字段：搜索次数、抓取次数、token、耗时、费用、错误记录。
 
 ### 私域知识库与 RAG
@@ -24,6 +24,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 - embedding 入库到 SQLite。
 - hybrid 检索：向量召回 + 关键词召回 + 可选 rerank。
 - 研究报告引用统一使用 `kb://{doc_id}#{chunk_id}`。
+- 报告中的知识库引用可点击定位到具体 chunk 和页码。
 - 前端知识库面板支持查看文档状态、错误原因、chunk、页码、分数和召回模式。
 
 ### Coder Agent 与 Python 沙箱
@@ -56,6 +57,8 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 - Workspace 与 Project。
 - 权限角色：`owner | editor | viewer`。
+- owner 唯一且不可被普通成员变更；editor 可创建和编辑，viewer 严格只读。
+- 团队成员可共同访问绑定到 Workspace/Project 的任务、知识库、报告版本和成果物。
 - 报告评论。
 - 只读共享链接。
 - 个人模式兼容，不强制创建团队空间。
@@ -85,7 +88,7 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 | 私域知识库 | SQLite 存储 chunk 和 embedding |
 | 搜索 | Tavily 或兼容搜索 Provider |
 | 模型 | DeepSeek / DashScope / OpenAI 兼容 Provider |
-| 沙箱 | 本地 Python 子进程，预留 Docker 模式 |
+| 沙箱 | Docker 隔离执行；公共 API 禁止回退到本机 subprocess |
 | 导出 | Markdown, PDF, PPTX, 播客脚本 |
 
 ## 快速开始
@@ -176,17 +179,11 @@ http://localhost:3000
 本轮实现已通过以下验证：
 
 ```bash
-python -m pytest backend/tests/test_wave0_smoke.py -q
+python -m pytest backend/tests -q
 python -m compileall cli backend evals
 npm.cmd run lint
 npm.cmd run build
-```
-
-FastAPI import smoke：
-
-```text
-DeepFlow API
-65 routes
+npm.cmd run test:e2e
 ```
 
 ## 当前边界
@@ -205,7 +202,8 @@ DeepFlow/
 ├── backend/                 # FastAPI 后端
 │   └── app/
 │       ├── api/routes/      # auth, research, report, artifacts, knowledge, tools, workspaces, templates, workflows
-│       ├── core/            # auth, db, events
+│       ├── core/            # 连接迁移、鉴权、访问策略、事件与任务队列
+│       ├── repositories/    # 按领域拆分的 SQLite 数据访问层
 │       └── services/        # research, knowledge, embedding, tools
 ├── cli/                     # Agent 引擎与状态机
 │   ├── agents/              # Planner, Researcher, Coder, Reporter 等
@@ -213,6 +211,7 @@ DeepFlow/
 ├── frontend/                # Next.js 前端
 │   ├── app/                 # 页面路由
 │   ├── components/          # 报告、知识库、成果物、Trace 等组件
+│   ├── e2e/                 # Playwright 研究闭环与响应式回归
 │   └── lib/                 # API wrapper 与类型
 ├── prompts/                 # Agent Prompt
 ├── evals/                   # Eval 用例和 runner

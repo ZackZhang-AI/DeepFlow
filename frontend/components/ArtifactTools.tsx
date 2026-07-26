@@ -131,6 +131,7 @@ export function ArtifactTools({ taskId }: Props) {
           {generating === "podcast" ? "生成中..." : "播客脚本与音频"}
         </button>
         <button
+          id="generate-pptx-command"
           onClick={() => generateArtifact("ppt")}
           disabled={generating !== null}
           className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-700 transition-all hover:bg-orange-100 disabled:opacity-50"

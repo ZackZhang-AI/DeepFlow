@@ -23,8 +23,11 @@ export function ReportWorkspace({ taskId, initialReport }: { taskId: string; ini
       <div className="sticky top-16 z-20 -mx-4 border-y border-[var(--border)] bg-[rgba(247,249,248,0.96)] px-4 py-3 backdrop-blur-lg sm:mx-0 sm:rounded-xl sm:border">
         <div className="flex flex-wrap items-center gap-2">
           <h2 id="report-workspace-heading" className="mr-auto text-sm font-semibold text-[var(--ink)]">报告工作区</h2>
+          <button type="button" onClick={() => document.getElementById("report-save-command")?.click()} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">保存</button>
+          <button type="button" onClick={() => document.getElementById("report-versions")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">版本</button>
           <button type="button" onClick={() => download("markdown")} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">Markdown</button>
           <button type="button" onClick={() => download("pdf")} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">PDF</button>
+          <button type="button" onClick={() => document.getElementById("generate-pptx-command")?.click()} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">PPTX</button>
           <button type="button" onClick={() => document.getElementById("source-inspector")?.scrollIntoView({ behavior: "smooth" })} className="min-h-10 rounded-lg border border-[var(--border)] bg-white px-3 text-xs font-medium text-slate-700 hover:bg-[var(--surface-muted)]">引用检查</button>
         </div>
       </div>

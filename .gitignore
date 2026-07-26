@@ -29,3 +29,5 @@ node_modules/
 .next/
 frontend/.next/
 .playwright-cli/
+frontend/test-results/
+frontend/playwright-report/

@@ -152,6 +152,7 @@ export async function createResearch(
   maxSteps = 5,
   searchDomains: string[] = [],
   recencyDays?: number,
+  scope?: { workspaceId?: string; projectId?: string },
 ): Promise<ResearchTask> {
   return authJson<ResearchTask>(
     "/api/research-tasks",
@@ -164,6 +165,8 @@ export async function createResearch(
         max_steps: maxSteps,
         search_domains: searchDomains,
         recency_days: recencyDays,
+        workspace_id: scope?.workspaceId,
+        project_id: scope?.projectId,
       }),
     },
     "创建研究失败",
@@ -497,6 +500,7 @@ export function subscribeToEvents(
   const es = new EventSource(`${API_BASE}/api/research-tasks/${taskId}/events${suffix}`);
 
   const eventTypes = [
+    "connected",
     "coordinator.started",
     "planner.completed",
     "research.started",

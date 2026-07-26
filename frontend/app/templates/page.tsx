@@ -14,27 +14,14 @@ import {
   updateTemplate,
 } from "@/lib/api";
 import { Button, getButtonClasses } from "@/components/ui/Button";
+import {
+  TemplateEditor,
+  type ReportStyle,
+  type TemplateFormState,
+} from "@/components/templates/TemplateEditor";
+import { TemplateList } from "@/components/templates/TemplateList";
+import { TemplateResearchStarter } from "@/components/templates/TemplateResearchStarter";
 import type { ResearchTemplate, ResearchTemplateSummary } from "@/lib/types";
-
-type ReportStyle = "general" | "market" | "competitor" | "technical" | "investment";
-
-interface TemplateFormState {
-  name: string;
-  category: string;
-  description: string;
-  clarificationQuestionsText: string;
-  planStructureText: string;
-  recommendedDomainsText: string;
-  reportStyle: ReportStyle;
-}
-
-const REPORT_STYLES: Array<{ value: ReportStyle; label: string }> = [
-  { value: "general", label: "通用研究报告" },
-  { value: "market", label: "市场分析" },
-  { value: "competitor", label: "竞品分析" },
-  { value: "technical", label: "技术调研" },
-  { value: "investment", label: "投资分析" },
-];
 
 const EMPTY_FORM: TemplateFormState = {
   name: "",
@@ -59,20 +46,6 @@ function splitLines(value: string) {
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function getStyleLabel(style: string) {
-  return REPORT_STYLES.find((item) => item.value === style)?.label ?? style;
-}
-
-function formatDate(value?: string) {
-  if (!value) return "未知时间";
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function toFormState(template: ResearchTemplate): TemplateFormState {
@@ -111,14 +84,6 @@ function buildPayload(form: TemplateFormState): Partial<ResearchTemplate> {
     recommended_domains: splitLines(form.recommendedDomainsText),
     report_style: form.reportStyle,
   };
-}
-
-function TemplateBadge({ children }: { children: string }) {
-  return (
-    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700">
-      {children}
-    </span>
-  );
 }
 
 export default function TemplatesPage() {
@@ -300,226 +265,37 @@ export default function TemplatesPage() {
         )}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-          <section className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight">模板列表</h2>
-                <p className="text-sm text-slate-500">{templates.length} 个可用模板</p>
-              </div>
-              <Button size="sm" variant="secondary" loading={loading} onClick={() => void loadTemplates()}>
-                刷新
-              </Button>
-            </div>
-
-            {loading ? (
-              <div className="grid min-h-80 place-items-center rounded-xl border border-slate-200 bg-slate-50">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
-              </div>
-            ) : templates.length === 0 ? (
-              <div className="flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
-                <p className="text-sm font-semibold text-slate-700">还没有模板</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">先在右侧创建一个模板，之后就能从固定方法直接开始研究。</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {templates.map((template) => {
-                  const isSelected = selectedTemplate?.template_id === template.template_id;
-                  return (
-                    <article
-                      key={template.template_id}
-                      className={`rounded-2xl border p-4 transition ${
-                        isSelected ? "border-cyan-300 bg-cyan-50/60" : "border-slate-200 bg-white hover:border-cyan-200"
-                      }`}
-                    >
-                      <button type="button" className="block w-full text-left" onClick={() => void selectTemplate(template)}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <TemplateBadge>{template.category || "未分类"}</TemplateBadge>
-                          <span className="text-xs text-slate-500">{getStyleLabel(template.report_style)}</span>
-                        </div>
-                        <h3 className="mt-3 line-clamp-2 text-base font-semibold tracking-tight text-slate-950">{template.name}</h3>
-                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                          {template.description || "暂无描述"}
-                        </p>
-                        <p className="mt-3 text-xs text-slate-400">更新于 {formatDate(template.updated_at)}</p>
-                      </button>
-                      <div className="mt-3 flex justify-end">
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={deletingId === template.template_id}
-                          onClick={() => void removeTemplate(template)}
-                        >
-                          删除
-                        </Button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+          <TemplateList
+            templates={templates}
+            selectedTemplateId={selectedTemplate?.template_id}
+            loading={loading}
+            deletingId={deletingId}
+            onRefresh={() => void loadTemplates()}
+            onSelect={(template) => void selectTemplate(template)}
+            onDelete={(template) => void removeTemplate(template)}
+          />
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <form onSubmit={submitTemplate} className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm">
-              <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    {editingTemplateId ? "编辑模板" : selectedTemplate ? "模板详情" : "新建模板"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {editingTemplateId || !selectedTemplate ? "填写模板结构并保存。" : "可直接从该模板发起研究，或进入编辑。"}
-                  </p>
-                </div>
-                {selectedTemplate && !editingTemplateId && (
-                  <Button size="sm" variant="soft" onClick={editSelected}>
-                    编辑
-                  </Button>
-                )}
-              </div>
-
-              {formError && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {formError}
-                </div>
-              )}
-
-              <fieldset disabled={Boolean(selectedTemplate && !editingTemplateId)} className="space-y-4 disabled:opacity-75">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="block">
-                    <span className="text-xs font-semibold text-slate-500">名称</span>
-                    <input
-                      value={form.name}
-                      onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                      className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="例如：AI 产品竞品研究"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold text-slate-500">分类</span>
-                    <input
-                      value={form.category}
-                      onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                      className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="市场 / 技术 / 投资"
-                    />
-                  </label>
-                </div>
-
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">描述</span>
-                  <textarea
-                    value={form.description}
-                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                    className="mt-2 min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="说明这个模板适合什么研究场景。"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">默认澄清问题</span>
-                  <textarea
-                    value={form.clarificationQuestionsText}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, clarificationQuestionsText: event.target.value }))
-                    }
-                    className="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder={"每行一个问题\n例如：研究对象所在行业是什么？"}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">计划结构 JSON</span>
-                  <textarea
-                    value={form.planStructureText}
-                    onChange={(event) => setForm((current) => ({ ...current, planStructureText: event.target.value }))}
-                    spellCheck={false}
-                    className="mt-2 min-h-52 w-full resize-y rounded-xl border border-slate-200 bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">推荐搜索域</span>
-                  <textarea
-                    value={form.recommendedDomainsText}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, recommendedDomainsText: event.target.value }))
-                    }
-                    className="mt-2 min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder={"每行一个域名\n例如：techcrunch.com"}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold text-slate-500">报告风格</span>
-                  <select
-                    value={form.reportStyle}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, reportStyle: event.target.value as ReportStyle }))
-                    }
-                    className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                  >
-                    {REPORT_STYLES.map((style) => (
-                      <option key={style.value} value={style.value}>
-                        {style.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </fieldset>
-
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                {selectedTemplate && editingTemplateId && (
-                  <Button type="button" variant="secondary" onClick={() => setEditingTemplateId(null)}>
-                    取消编辑
-                  </Button>
-                )}
-                {(!selectedTemplate || editingTemplateId) && (
-                  <Button type="submit" variant="primary" loading={saving}>
-                    {editingTemplateId ? "保存修改" : "创建模板"}
-                  </Button>
-                )}
-              </div>
-            </form>
-
-            <aside className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm">
-              <h2 className="text-lg font-semibold tracking-tight">从模板开始</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                选择模板后输入研究主题，DeepFlow 会带入模板里的澄清问题、计划结构和报告风格。
-              </p>
-
-              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-500">当前模板</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950">
-                  {activeTemplate?.name ?? selectedTemplate?.name ?? "尚未选择"}
-                </p>
-                {selectedTemplate && (
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    {selectedTemplate.clarification_questions.length} 个澄清问题 ·{" "}
-                    {selectedTemplate.recommended_domains.length} 个推荐域 · {getStyleLabel(selectedTemplate.report_style)}
-                  </p>
-                )}
-              </div>
-
-              <label className="mt-5 block">
-                <span className="text-xs font-semibold text-slate-500">研究主题</span>
-                <textarea
-                  value={topic}
-                  onChange={(event) => setTopic(event.target.value)}
-                  className="mt-2 min-h-32 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10"
-                  placeholder="例如：对比国内主流 AI 搜索产品的商业化策略"
-                />
-              </label>
-
-              <Button className="mt-4" variant="primary" fullWidth loading={starting} onClick={() => void startResearch()}>
-                创建研究任务
-              </Button>
-
-              {startedTaskId && (
-                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                  已创建任务：{startedTaskId}
-                </div>
-              )}
-            </aside>
+            <TemplateEditor
+              selectedTemplate={selectedTemplate}
+              editingTemplateId={editingTemplateId}
+              form={form}
+              formError={formError}
+              saving={saving}
+              onChange={setForm}
+              onEdit={editSelected}
+              onCancelEdit={() => setEditingTemplateId(null)}
+              onSubmit={(event) => void submitTemplate(event)}
+            />
+            <TemplateResearchStarter
+              selectedTemplate={selectedTemplate}
+              activeTemplate={activeTemplate}
+              topic={topic}
+              starting={starting}
+              startedTaskId={startedTaskId}
+              onTopicChange={setTopic}
+              onStart={() => void startResearch()}
+            />
           </section>
         </div>
       </div>

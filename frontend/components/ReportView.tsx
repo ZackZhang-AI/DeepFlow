@@ -220,6 +220,9 @@ export function ReportView({ report, onExport, onNewResearch }: Props) {
 
   return (
     <div className="space-y-6">
+      <button id="report-save-command" type="button" onClick={() => void handleSave()} className="hidden">
+        保存报告
+      </button>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "引用来源", value: `${report.sources_count} 个`, color: "text-cyan-700", bg: "from-cyan-50 to-white" },
@@ -265,7 +268,7 @@ export function ReportView({ report, onExport, onNewResearch }: Props) {
       )}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <div className="space-y-4 rounded-3xl border border-white/70 bg-white/60 p-4 shadow-[0_18px_55px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+        <div id="report-versions" className="scroll-mt-32 space-y-4 rounded-3xl border border-white/70 bg-white/60 p-4 shadow-[0_18px_55px_rgba(15,23,42,0.07)] backdrop-blur-xl">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">AI 文本处理</p>
             <p className="mt-1 text-sm text-slate-500">支持润色、扩写、缩写和指定章节改写。</p>
