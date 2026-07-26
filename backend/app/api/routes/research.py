@@ -15,7 +15,13 @@ from backend.app.models.schemas import (
     ResearchTaskResponse,
     ConfirmPlanRequest,
 )
-from backend.app.core.db import create_task, get_task, update_task, list_tasks, list_agent_runs
+from backend.app.repositories.research import (
+    create_task,
+    get_task,
+    list_agent_runs,
+    list_tasks,
+    update_task,
+)
 from backend.app.core.auth import require_login
 from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.core.rate_limit import check_rate_limit
@@ -246,8 +252,8 @@ def _task_response(task: dict) -> ResearchTaskResponse:
     current_step = int(task.get("current_step") or 0)
     total_steps = int(task.get("total_steps") or 0)
     status = task.get("status") or "coordinating"
-    progress = 1.0 if status == "completed" else (
-        min(0.95, current_step / total_steps) if total_steps else 0.0
+    progress = 100.0 if status == "completed" else (
+        min(95.0, current_step / total_steps * 100) if total_steps else 0.0
     )
     plan = json.loads(task["plan_json"]) if task.get("plan_json") else None
     return ResearchTaskResponse(

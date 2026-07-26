@@ -11,14 +11,16 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from backend.app.models.schemas import ReportResponse, RewriteRequest, SaveReportRequest
 from backend.app.core.auth import require_login
-from backend.app.core.access import require_task_access
+from backend.app.core.access import require_report_version_access, require_task_access
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import artifact_rate_limit
-from backend.app.core.db import (
+from backend.app.repositories.artifact import (
     get_report_version,
-    get_task,
     list_report_versions,
     save_report_version,
+)
+from backend.app.repositories.research import (
+    get_task,
     update_task,
 )
 
@@ -82,10 +84,7 @@ async def versions(task_id: str, user: dict = Depends(require_login)):
 @router.get("/versions/{version_id}")
 async def version_detail(version_id: str, user: dict = Depends(require_login)):
     """获取某个报告版本正文"""
-    version = get_report_version(version_id, user_id=user["user_id"])
-    if version is None:
-        raise HTTPException(status_code=404, detail="版本不存在")
-    return version
+    return require_report_version_access(version_id, user["user_id"])
 
 
 @router.post("/{task_id}/versions/{version_id}/restore")

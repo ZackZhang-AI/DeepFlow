@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
-from backend.app.core.db import get_connection, get_task, get_user_by_username
+from backend.app.core.access import require_artifact_access, require_task_access
+from backend.app.repositories.auth import get_user_by_username
+from backend.app.repositories import workspace as workspace_repository
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 share_router = APIRouter(prefix="/api/share-links", tags=["share-links"])
@@ -50,61 +52,28 @@ class ShareLinkRequest(BaseModel):
 
 @router.get("")
 async def list_workspaces(user: dict = Depends(require_login)):
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT w.*, m.role
-           FROM workspaces w
-           JOIN workspace_members m ON m.workspace_id = w.workspace_id
-           WHERE m.user_id = ?
-           ORDER BY w.updated_at DESC""",
-        (user["user_id"],),
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    return workspace_repository.list_workspaces(user["user_id"])
 
 
 @router.post("", status_code=201)
 async def create_workspace(req: WorkspaceRequest, user: dict = Depends(require_login)):
-    now = datetime.now().isoformat()
     workspace_id = f"ws_{uuid.uuid4().hex[:12]}"
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO workspaces (workspace_id, owner_user_id, name, description, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (workspace_id, user["user_id"], req.name, req.description, now, now),
+    return workspace_repository.create_workspace(
+        workspace_id,
+        user["user_id"],
+        req.name,
+        req.description,
     )
-    conn.execute(
-        """INSERT INTO workspace_members (workspace_id, user_id, role, created_at)
-           VALUES (?, ?, 'owner', ?)""",
-        (workspace_id, user["user_id"], now),
-    )
-    conn.commit()
-    row = conn.execute(
-        """SELECT w.*, 'owner' AS role FROM workspaces w WHERE w.workspace_id = ?""",
-        (workspace_id,),
-    ).fetchone()
-    conn.close()
-    return dict(row)
 
 
 @router.get("/{workspace_id}")
 async def get_workspace(workspace_id: str, user: dict = Depends(require_login)):
     _require_workspace_role(workspace_id, user["user_id"])
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM workspaces WHERE workspace_id = ?", (workspace_id,)).fetchone()
-    members = conn.execute(
-        """SELECT m.user_id, u.username, m.role, m.created_at
-           FROM workspace_members m
-           LEFT JOIN users u ON u.user_id = m.user_id
-           WHERE m.workspace_id = ?
-           ORDER BY m.created_at ASC""",
-        (workspace_id,),
-    ).fetchall()
-    conn.close()
+    row = workspace_repository.get_workspace(workspace_id)
     if not row:
         raise HTTPException(status_code=404, detail="Workspace not found")
     data = dict(row)
-    data["members"] = [dict(member) for member in members]
+    data["members"] = workspace_repository.list_members(workspace_id)
     return data
 
 
@@ -114,99 +83,77 @@ async def upsert_member(workspace_id: str, req: MemberRequest, user: dict = Depe
     target = get_user_by_username(req.username)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO workspace_members (workspace_id, user_id, role, created_at)
-           VALUES (?, ?, ?, ?)""",
-        (workspace_id, target["user_id"], req.role, now),
-    )
-    conn.commit()
-    conn.close()
+    workspace = workspace_repository.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if target["user_id"] == workspace["owner_user_id"] and req.role != "owner":
+        raise HTTPException(status_code=409, detail="Workspace owner role cannot be changed")
+    if target["user_id"] != workspace["owner_user_id"] and req.role == "owner":
+        raise HTTPException(status_code=409, detail="Workspace ownership transfer is not supported")
+    workspace_repository.upsert_member(workspace_id, target["user_id"], req.role)
     return {"workspace_id": workspace_id, "user_id": target["user_id"], "username": target["username"], "role": req.role}
 
 
 @router.get("/{workspace_id}/projects")
 async def list_projects(workspace_id: str, user: dict = Depends(require_login)):
     _require_workspace_role(workspace_id, user["user_id"])
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT * FROM projects WHERE workspace_id = ? ORDER BY updated_at DESC""",
-        (workspace_id,),
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    return workspace_repository.list_projects(workspace_id)
 
 
 @router.post("/{workspace_id}/projects", status_code=201)
 async def create_project(workspace_id: str, req: ProjectRequest, user: dict = Depends(require_login)):
     _require_workspace_role(workspace_id, user["user_id"], allowed=EDIT_ROLES)
-    now = datetime.now().isoformat()
     project_id = f"proj_{uuid.uuid4().hex[:12]}"
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO projects (project_id, workspace_id, owner_user_id, name, description, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (project_id, workspace_id, user["user_id"], req.name, req.description, now, now),
+    return workspace_repository.create_project(
+        project_id,
+        workspace_id,
+        user["user_id"],
+        req.name,
+        req.description,
     )
-    conn.commit()
-    row = conn.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
-    conn.close()
-    return dict(row)
 
 
 @router.post("/comments", status_code=201)
 async def add_report_comment(req: CommentRequest, user: dict = Depends(require_login)):
-    task = _require_task_access(req.task_id, user["user_id"], allowed=EDIT_ROLES)
+    task = require_task_access(req.task_id, user["user_id"], write=True)
     comment_id = f"comment_{uuid.uuid4().hex[:12]}"
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO report_comments (comment_id, task_id, user_id, anchor, content, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (comment_id, task["task_id"], user["user_id"], req.anchor, req.content, now),
+    return workspace_repository.create_comment(
+        comment_id,
+        task["task_id"],
+        user["user_id"],
+        req.anchor,
+        req.content,
     )
-    conn.commit()
-    row = conn.execute("SELECT * FROM report_comments WHERE comment_id = ?", (comment_id,)).fetchone()
-    conn.close()
-    return dict(row)
 
 
 @router.get("/comments/{task_id}")
 async def list_report_comments(task_id: str, user: dict = Depends(require_login)):
-    _require_task_access(task_id, user["user_id"])
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT c.*, u.username
-           FROM report_comments c
-           LEFT JOIN users u ON u.user_id = c.user_id
-           WHERE c.task_id = ?
-           ORDER BY c.created_at ASC""",
-        (task_id,),
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    require_task_access(task_id, user["user_id"])
+    return workspace_repository.list_comments(task_id)
 
 
 @share_router.post("", status_code=201)
 async def create_share_link(req: ShareLinkRequest, user: dict = Depends(require_login)):
     if req.resource_type == "task_report":
-        _require_task_access(req.resource_id, user["user_id"])
+        resource = require_task_access(req.resource_id, user["user_id"], write=True)
     else:
-        _require_owned_artifact(req.resource_id, user["user_id"])
+        resource = require_artifact_access(req.resource_id, user["user_id"], write=True)
     token = secrets.token_urlsafe(24)
     share_id = f"share_{uuid.uuid4().hex[:12]}"
     now = datetime.now().isoformat()
     expires_at = (datetime.now() + timedelta(days=req.expires_in_days)).isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO shared_links
-           (share_id, token, user_id, resource_type, resource_id, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (share_id, token, user["user_id"], req.resource_type, req.resource_id, now, expires_at),
+    workspace_repository.create_share_link(
+        {
+            "share_id": share_id,
+            "token": token,
+            "user_id": user["user_id"],
+            "resource_type": req.resource_type,
+            "resource_id": req.resource_id,
+            "workspace_id": resource.get("workspace_id"),
+            "created_at": now,
+            "expires_at": expires_at,
+        }
     )
-    conn.commit()
-    conn.close()
     return {
         "share_id": share_id,
         "token": token,
@@ -218,90 +165,30 @@ async def create_share_link(req: ShareLinkRequest, user: dict = Depends(require_
 
 @share_router.delete("/{share_id}", status_code=204)
 async def revoke_share_link(share_id: str, user: dict = Depends(require_login)):
-    conn = get_connection()
-    cursor = conn.execute(
-        """UPDATE shared_links SET revoked_at = ?
-           WHERE share_id = ? AND user_id = ? AND revoked_at IS NULL""",
-        (datetime.now().isoformat(), share_id, user["user_id"]),
-    )
-    conn.commit()
-    conn.close()
-    if cursor.rowcount == 0:
+    if not workspace_repository.revoke_share_link(share_id, user["user_id"]):
         raise HTTPException(status_code=404, detail="Shared link not found")
     return None
 
 
 @public_router.get("/{token}")
 async def get_shared_resource(token: str):
-    conn = get_connection()
-    share = conn.execute("SELECT * FROM shared_links WHERE token = ?", (token,)).fetchone()
-    if not share:
-        conn.close()
+    share_dict, resource = workspace_repository.get_shared_resource(token)
+    if not share_dict:
         raise HTTPException(status_code=404, detail="Shared link not found")
-    share_dict = dict(share)
     if share_dict.get("revoked_at"):
-        conn.close()
         raise HTTPException(status_code=404, detail="Shared link not found")
     if share_dict.get("expires_at") and share_dict["expires_at"] <= datetime.now().isoformat():
-        conn.close()
         raise HTTPException(status_code=410, detail="Shared link has expired")
-    if share_dict["resource_type"] == "task_report":
-        row = conn.execute(
-            """SELECT task_id, topic, report_markdown, sources_count, tokens_used, elapsed_seconds, updated_at
-               FROM research_tasks WHERE task_id = ? AND report_markdown IS NOT NULL AND report_markdown != ''""",
-            (share_dict["resource_id"],),
-        ).fetchone()
-        conn.close()
-        if not row:
-            raise HTTPException(status_code=404, detail="Report not found")
-        return {"share": share_dict, "resource": dict(row), "readonly": True}
-    row = conn.execute(
-        """SELECT artifact_id, task_id, artifact_type, title, content, metadata_json, created_at
-           FROM artifacts WHERE artifact_id = ?""",
-        (share_dict["resource_id"],),
-    ).fetchone()
-    conn.close()
-    if not row:
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    return {"share": share_dict, "resource": dict(row), "readonly": True}
+    if not resource:
+        detail = "Report not found" if share_dict["resource_type"] == "task_report" else "Artifact not found"
+        raise HTTPException(status_code=404, detail=detail)
+    return {"share": share_dict, "resource": resource, "readonly": True}
 
 
 def _require_workspace_role(workspace_id: str, user_id: str, allowed: set[str] | None = None) -> str:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?",
-        (workspace_id, user_id),
-    ).fetchone()
-    conn.close()
-    if not row:
+    role = workspace_repository.get_member_role(workspace_id, user_id)
+    if not role:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    role = row["role"]
     if allowed and role not in allowed:
         raise HTTPException(status_code=403, detail="Insufficient workspace permission")
     return role
-
-
-def _require_task_access(task_id: str, user_id: str, allowed: set[str] | None = None) -> dict[str, Any]:
-    task = get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.get("user_id") == user_id:
-        return task
-    workspace_id = task.get("workspace_id")
-    if not workspace_id:
-        raise HTTPException(status_code=404, detail="Task not found")
-    role = _require_workspace_role(workspace_id, user_id, allowed)
-    if allowed and role not in allowed:
-        raise HTTPException(status_code=403, detail="Insufficient task permission")
-    return task
-
-
-def _require_owned_artifact(artifact_id: str, user_id: str) -> None:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT artifact_id FROM artifacts WHERE artifact_id = ? AND user_id = ?",
-        (artifact_id, user_id),
-    ).fetchone()
-    conn.close()
-    if not row:
-        raise HTTPException(status_code=404, detail="Artifact not found")

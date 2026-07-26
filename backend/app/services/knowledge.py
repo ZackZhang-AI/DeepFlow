@@ -15,7 +15,7 @@ from typing import Iterable
 import numpy as np
 from pypdf import PdfReader
 
-from backend.app.core.db import (
+from backend.app.repositories.knowledge import (
     get_knowledge_document,
     list_embedded_knowledge_chunks,
     replace_knowledge_chunks,

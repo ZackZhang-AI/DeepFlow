@@ -11,8 +11,8 @@ from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend.app.core import db
 from backend.app.core.runtime_config import demo_credentials
+from backend.app.repositories import auth as auth_repository
 
 LOCAL_DEFAULT_USER_ID = "local_default_user"
 TOKEN_TTL_DAYS = 30
@@ -46,7 +46,7 @@ def create_bearer_token(user_id: str) -> tuple[str, str]:
     token = secrets.token_urlsafe(32)
     token_hash = _hash_token(token)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=TOKEN_TTL_DAYS)).isoformat()
-    db.create_auth_session(
+    auth_repository.create_auth_session(
         token_hash=token_hash,
         user_id=user_id,
         expires_at=expires_at,
@@ -64,18 +64,22 @@ def get_current_user(
 
 
 def get_user_from_token(token: str) -> Optional[dict]:
-    session = db.get_auth_session(_hash_token(token))
-    if session is None or _is_expired(session["expires_at"]):
+    token_hash = _hash_token(token)
+    session = auth_repository.get_auth_session(token_hash)
+    if session is None:
         return None
-    return db.get_user_by_id(session["user_id"])
+    if _is_expired(session["expires_at"]):
+        auth_repository.delete_auth_session(token_hash)
+        return None
+    return auth_repository.get_user_by_id(session["user_id"])
 
 
 def revoke_token(token: str) -> bool:
-    return db.delete_auth_session(_hash_token(token))
+    return auth_repository.delete_auth_session(_hash_token(token))
 
 
 def cleanup_expired_sessions() -> int:
-    return db.delete_expired_auth_sessions(datetime.now(timezone.utc).isoformat())
+    return auth_repository.delete_expired_auth_sessions(datetime.now(timezone.utc).isoformat())
 
 
 def require_login(user: Annotated[Optional[dict], Depends(get_current_user)]) -> dict:
@@ -102,10 +106,10 @@ def ensure_demo_user() -> None:
         return
 
     username, password = credentials
-    if db.get_user_by_username(username):
+    if auth_repository.get_user_by_username(username):
         return
 
-    db.create_user(
+    auth_repository.create_user(
         user_id="demo_user",
         username=username,
         password_hash=hash_password(password),

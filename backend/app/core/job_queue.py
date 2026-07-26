@@ -13,7 +13,8 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 
-from backend.app.core.db import get_connection, update_task
+from backend.app.core.db import get_connection
+from backend.app.repositories.research import update_task
 from backend.app.core.errors import classify_failure
 from backend.app.core.events import append_event
 
@@ -216,7 +217,17 @@ async def _worker_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.exception("Background job failed", extra={"job_id": job["job_id"]})
+            failure = classify_failure(exc)
+            logger.exception(
+                "Background job failed",
+                extra={
+                    "task_id": job.get("task_id"),
+                    "user_id": job.get("user_id"),
+                    "phase": job.get("job_type"),
+                    "attempt": job.get("attempt_count"),
+                    "error_code": failure.code,
+                },
+            )
             _fail_job(job, exc)
 
 

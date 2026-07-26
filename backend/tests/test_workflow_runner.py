@@ -101,6 +101,7 @@ def test_human_feedback_pauses_and_resumes_from_next_node(monkeypatch):
 
     async def fake_research(**kwargs):
         calls.append("researcher")
+        assert "approved" in kwargs["step"].description.lower()
         return _finding(), 1, 1
 
     monkeypatch.setattr(workflow_runner, "generate_plan", fake_plan)
@@ -148,6 +149,33 @@ def test_human_feedback_pauses_and_resumes_from_next_node(monkeypatch):
     assert calls == ["planner", "researcher"]
     assert resumed["outputs"]["approval"]["feedback"] == {"approved": True}
     assert resumed["feedback"][0]["node_id"] == "approval"
+
+
+def test_workflow_step_budget_does_not_report_partial_success(monkeypatch):
+    async def fake_plan(**kwargs):
+        return _plan(), 1, 1
+
+    monkeypatch.setattr(workflow_runner, "generate_plan", fake_plan)
+    monkeypatch.setattr(workflow_runner, "_save_node_trace", lambda **kwargs: None)
+
+    result = asyncio.run(
+        workflow_runner.execute_workflow(
+            nodes=[
+                {"id": "plan", "type": "Planner"},
+                {"id": "report", "type": "Artifact", "config": {"content": "not-run"}},
+            ],
+            workflow_input={"topic": "DeepFlow"},
+            user={"user_id": "user_test"},
+            workflow_id="wf_budget",
+            run_id="run_budget",
+            budget={"max_steps": 1},
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert result["next_node_index"] == 1
+    assert "step budget exceeded" in result["error"].lower()
+    assert "report" not in result["outputs"]
 
 
 def test_node_retry_and_token_budget(monkeypatch):

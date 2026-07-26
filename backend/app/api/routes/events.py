@@ -5,8 +5,8 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from backend.app.core.access import require_task_access
 from backend.app.core.auth import get_user_from_token
-from backend.app.core.db import get_task
 from backend.app.core.events import get_event_manager
 
 router = APIRouter(prefix="/api/research-tasks", tags=["events"])
@@ -25,11 +25,9 @@ async def stream_events(
     """
     user = get_user_from_token(token) if token else None
     if user is None:
-      raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=401, detail="Authentication required")
 
-    task = get_task(task_id, user_id=user["user_id"])
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+    require_task_access(task_id, user["user_id"])
 
     emitter = get_event_manager(task_id)
 

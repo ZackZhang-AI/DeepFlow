@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from backend.app.core.runtime_config import sandbox_tool_disabled
-from backend.app.core.db import get_tool_setting, set_tool_setting
+from backend.app.repositories.tool import get_tool_setting, set_tool_setting
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
 from cli.tools.sandbox import execute_python

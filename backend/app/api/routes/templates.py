@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.core.auth import require_login
-from backend.app.core.db import create_task, get_connection
+from backend.app.repositories.research import create_task, update_task
 from backend.app.core.readiness import require_research_providers
+from backend.app.repositories import template as template_repository
 from cli.models import ResearchPlan, ResearchStep, StepType
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -34,51 +35,19 @@ class StartFromTemplateRequest(BaseModel):
 
 @router.get("")
 async def list_templates(user: dict = Depends(require_login)):
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT template_id, user_id, name, category, description, report_style, created_at, updated_at
-           FROM research_templates
-           WHERE user_id = ?
-           ORDER BY updated_at DESC""",
-        (user["user_id"],),
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    return template_repository.list_templates(user["user_id"])
 
 
 @router.post("", status_code=201)
 async def create_template(req: TemplateRequest, user: dict = Depends(require_login)):
     template_id = f"tmpl_{uuid.uuid4().hex[:12]}"
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO research_templates
-           (template_id, user_id, name, category, description, clarification_questions_json,
-            plan_structure_json, recommended_domains_json, report_style, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            template_id,
-            user["user_id"],
-            req.name,
-            req.category,
-            req.description,
-            json.dumps(req.clarification_questions, ensure_ascii=False),
-            json.dumps(req.plan_structure, ensure_ascii=False),
-            json.dumps(req.recommended_domains, ensure_ascii=False),
-            req.report_style,
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM research_templates WHERE template_id = ?", (template_id,)).fetchone()
-    conn.close()
-    return _public_template(dict(row))
+    row = template_repository.create_template(template_id, user["user_id"], req.model_dump())
+    return _public_template(row)
 
 
 @router.get("/{template_id}")
 async def get_template(template_id: str, user: dict = Depends(require_login)):
-    template = _get_template(template_id, user["user_id"])
+    template = template_repository.get_template(template_id, user["user_id"])
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     return _public_template(template)
@@ -86,44 +55,15 @@ async def get_template(template_id: str, user: dict = Depends(require_login)):
 
 @router.put("/{template_id}")
 async def update_template(template_id: str, req: TemplateRequest, user: dict = Depends(require_login)):
-    if not _get_template(template_id, user["user_id"]):
+    if not template_repository.get_template(template_id, user["user_id"]):
         raise HTTPException(status_code=404, detail="Template not found")
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """UPDATE research_templates
-           SET name = ?, category = ?, description = ?, clarification_questions_json = ?,
-               plan_structure_json = ?, recommended_domains_json = ?, report_style = ?, updated_at = ?
-           WHERE template_id = ? AND user_id = ?""",
-        (
-            req.name,
-            req.category,
-            req.description,
-            json.dumps(req.clarification_questions, ensure_ascii=False),
-            json.dumps(req.plan_structure, ensure_ascii=False),
-            json.dumps(req.recommended_domains, ensure_ascii=False),
-            req.report_style,
-            now,
-            template_id,
-            user["user_id"],
-        ),
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM research_templates WHERE template_id = ?", (template_id,)).fetchone()
-    conn.close()
-    return _public_template(dict(row))
+    row = template_repository.update_template(template_id, user["user_id"], req.model_dump())
+    return _public_template(row or {})
 
 
 @router.delete("/{template_id}")
 async def delete_template(template_id: str, user: dict = Depends(require_login)):
-    conn = get_connection()
-    cur = conn.execute(
-        "DELETE FROM research_templates WHERE template_id = ? AND user_id = ?",
-        (template_id, user["user_id"]),
-    )
-    conn.commit()
-    conn.close()
-    if cur.rowcount == 0:
+    if not template_repository.delete_template(template_id, user["user_id"]):
         raise HTTPException(status_code=404, detail="Template not found")
     return {"deleted": True, "template_id": template_id}
 
@@ -135,7 +75,7 @@ async def start_research_from_template(
     user: dict = Depends(require_login),
 ):
     require_research_providers()
-    template = _get_template(template_id, user["user_id"])
+    template = template_repository.get_template(template_id, user["user_id"])
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -154,22 +94,15 @@ async def start_research_from_template(
         if plan_structure
         else None
     )
-    conn = get_connection()
-    conn.execute(
-        """UPDATE research_tasks
-           SET clarification_json = ?, plan_json = ?, status = ?, updated_at = ?
-           WHERE task_id = ? AND user_id = ?""",
-        (
-            json.dumps(questions, ensure_ascii=False),
-            json.dumps(plan, ensure_ascii=False) if plan else None,
-            "awaiting_confirmation" if plan_structure else "clarifying",
-            datetime.now().isoformat(),
-            task_id,
-            user["user_id"],
-        ),
+    task = update_task(
+        task_id,
+        owner_user_id=user["user_id"],
+        clarification_json=json.dumps(questions, ensure_ascii=False),
+        plan_json=json.dumps(plan, ensure_ascii=False) if plan else None,
+        status="awaiting_confirmation" if plan_structure else "clarifying",
     )
-    conn.commit()
-    conn.close()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
     task["template_id"] = template_id
     task["status"] = "awaiting_confirmation" if plan_structure else "clarifying"
     return task
@@ -233,16 +166,6 @@ def _build_template_plan(
     payload["template_id"] = template_id
     payload["style"] = report_style
     return payload
-
-
-def _get_template(template_id: str, user_id: str) -> dict | None:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM research_templates WHERE template_id = ? AND user_id = ?",
-        (template_id, user_id),
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
 
 
 def _public_template(row: dict) -> dict:

@@ -13,7 +13,7 @@ from backend.app.core.auth import (
     revoke_token,
     verify_password,
 )
-from backend.app.core.db import create_user, get_user_by_username
+from backend.app.repositories.auth import create_user, get_user_by_username
 from backend.app.core.runtime_config import public_registration_allowed
 from backend.app.models.schemas import AuthResponse, LoginRequest, RegisterRequest, UserResponse
 

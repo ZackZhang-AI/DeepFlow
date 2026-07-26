@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from backend.app.core.db import (
+from backend.app.repositories.knowledge import (
     delete_knowledge_document,
     get_knowledge_document,
     list_knowledge_chunks,
@@ -12,7 +12,7 @@ from backend.app.core.auth import require_login
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import knowledge_upload_max_bytes, knowledge_write_rate_limit
 from backend.app.core.job_queue import enqueue_job
-from backend.app.core.access import require_scope_access
+from backend.app.core.access import require_knowledge_access, require_scope_access
 from backend.app.models.schemas import KnowledgeDocumentRequest
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import (
@@ -115,21 +115,20 @@ async def search_documents(
 
 @router.get("/{doc_id}/chunks")
 async def get_document_chunks(doc_id: str, user: dict = Depends(require_login)):
-    doc = get_knowledge_document(doc_id, user_id=user["user_id"])
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return [_public_chunk(chunk, include_score=False) for chunk in list_knowledge_chunks(doc_id, user_id=user["user_id"])]
+    doc = require_knowledge_access(doc_id, user["user_id"])
+    return [
+        _public_chunk(chunk, include_score=False)
+        for chunk in list_knowledge_chunks(doc_id, user_id=doc["user_id"])
+    ]
 
 
 @router.post("/{doc_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
 async def reindex(doc_id: str, user: dict = Depends(require_login)):
-    doc = get_knowledge_document(doc_id, user_id=user["user_id"])
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    from backend.app.core.db import update_knowledge_document
+    doc = require_knowledge_access(doc_id, user["user_id"], write=True)
+    from backend.app.repositories.knowledge import update_knowledge_document
     doc = update_knowledge_document(
         doc_id,
-        owner_user_id=user["user_id"],
+        owner_user_id=doc["user_id"],
         status="pending",
         error_message="",
         chunk_count=0,
@@ -144,7 +143,8 @@ async def reindex(doc_id: str, user: dict = Depends(require_login)):
 
 @router.delete("/{doc_id}")
 async def delete_document(doc_id: str, user: dict = Depends(require_login)):
-    if not delete_knowledge_document(doc_id, user_id=user["user_id"]):
+    doc = require_knowledge_access(doc_id, user["user_id"], write=True)
+    if not delete_knowledge_document(doc_id, user_id=doc["user_id"]):
         raise HTTPException(status_code=404, detail="Document not found")
     return {"deleted": True, "doc_id": doc_id}
 

@@ -21,7 +21,7 @@ from cli.agents.planner import generate_plan
 from cli.agents.researcher import research_step
 from cli.agents.coder import process_step
 from cli.agents.reporter import generate_report
-from backend.app.core.db import (
+from backend.app.repositories.research import (
     update_task,
     save_step,
     update_step,
@@ -33,6 +33,7 @@ from backend.app.core.events import get_event_manager, remove_event_manager
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
 from backend.app.core.runtime_config import sandbox_tool_disabled
+from backend.app.core.errors import classify_failure
 
 logger = logging.getLogger("deepflow.backend")
 
@@ -46,6 +47,7 @@ async def generate_research_plan_task(
     """后台生成研究计划，等待用户确认后再执行。"""
     emitter = get_event_manager(task_id)
     started_at = time.time()
+    task = get_task(task_id) or {}
 
     try:
         await emitter.emit("coordinator.started", task_id=task_id)
@@ -91,7 +93,17 @@ async def generate_research_plan_task(
         )
 
     except Exception as e:
-        logger.exception(f"研究计划生成失败: {task_id}")
+        failure = classify_failure(e)
+        logger.exception(
+            "研究计划生成失败",
+            extra={
+                "task_id": task_id,
+                "user_id": task.get("user_id"),
+                "phase": "planning",
+                "elapsed": round(time.time() - started_at, 3),
+                "error_code": failure.code,
+            },
+        )
         raise
 
 
@@ -106,6 +118,7 @@ async def execute_research_task(task_id: str):
     total_search_calls = 0
     total_crawl_calls = 0
     started_at = time.time()
+    task: dict = {}
 
     try:
         task = get_task(task_id)
@@ -285,7 +298,17 @@ async def execute_research_task(task_id: str):
         )
 
     except Exception as e:
-        logger.exception(f"研究任务失败: {task_id}")
+        failure = classify_failure(e)
+        logger.exception(
+            "研究任务失败",
+            extra={
+                "task_id": task_id,
+                "user_id": (task or {}).get("user_id"),
+                "phase": (task or {}).get("status") or "researching",
+                "elapsed": round(time.time() - started_at, 3),
+                "error_code": failure.code,
+            },
+        )
         raise
 
     finally:

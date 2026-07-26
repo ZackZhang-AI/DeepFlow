@@ -14,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.app.core.db import get_artifact, get_task, list_artifacts, save_artifact, save_report_version, update_task
+from backend.app.repositories.artifact import list_artifacts, save_artifact, save_report_version
+from backend.app.repositories.research import get_task, update_task
 from backend.app.core.auth import require_login
-from backend.app.core.access import require_task_access
+from backend.app.core.access import require_artifact_access, require_task_access
 from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import artifact_rate_limit
 from cli.config import Config
@@ -369,9 +370,7 @@ async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_logi
 @router.get("/download/{artifact_id}")
 async def download_artifact(artifact_id: str, user: dict = Depends(require_login)):
     """下载已生成的成果物文件或文本内容。"""
-    artifact = get_artifact(artifact_id, user_id=user["user_id"])
-    if not artifact:
-        raise HTTPException(status_code=404, detail="成果物不存在")
+    artifact = require_artifact_access(artifact_id, user["user_id"])
 
     path = _existing_file_path(artifact["content"])
     if path is None:
@@ -395,9 +394,7 @@ async def download_artifact(artifact_id: str, user: dict = Depends(require_login
 @router.get("/detail/{artifact_id}")
 async def artifact_detail(artifact_id: str, user: dict = Depends(require_login)):
     """查看成果物详情；文本类成果物会返回正文。"""
-    artifact = get_artifact(artifact_id, user_id=user["user_id"])
-    if not artifact:
-        raise HTTPException(status_code=404, detail="成果物不存在")
+    artifact = require_artifact_access(artifact_id, user["user_id"])
     return _serialize_artifact(artifact, include_content=True)
 
 

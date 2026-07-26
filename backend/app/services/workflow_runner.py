@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from backend.app.core.db import get_connection
+from backend.app.repositories.workflow import save_node_run
 from backend.app.core.runtime_config import sandbox_tool_disabled
 from backend.app.services.tools import test_tool
 from cli.agents.planner import generate_plan
@@ -105,6 +105,17 @@ async def execute_workflow(
                 feedback=state["feedback"],
             )
 
+    if len(nodes) > max_steps:
+        return _checkpoint(
+            status="failed",
+            outputs=outputs,
+            trace=trace,
+            next_node_index=len(executable_nodes),
+            token_usage=token_usage,
+            error=f"Workflow step budget exceeded: {len(nodes)}/{max_steps}",
+            feedback=state["feedback"],
+        )
+
     return _checkpoint(
         status="completed",
         outputs=outputs,
@@ -149,6 +160,7 @@ async def _run_node(
     error = ""
     token_usage = 0
     tool_calls: list[dict[str, Any]] = []
+    feedback_context = _feedback_text(workflow_input.get("human_feedback"))
 
     try:
         if node_type == "Planner":
@@ -160,7 +172,10 @@ async def _run_node(
                 topic=topic,
                 locale=locale,
                 max_steps=max(1, int(config.get("max_steps") or 5)),
-                context=str(config.get("context") or workflow_input.get("context") or ""),
+                context=_join_context(
+                    str(config.get("context") or workflow_input.get("context") or ""),
+                    feedback_context,
+                ),
             )
             token_usage = prompt_tokens + completion_tokens
             output = {
@@ -181,6 +196,15 @@ async def _run_node(
             prompt_tokens = 0
             completion_tokens = 0
             for step_index, step in selected_steps:
+                if feedback_context:
+                    step = step.model_copy(
+                        update={
+                            "description": _join_context(
+                                step.description,
+                                f"Human feedback: {feedback_context}",
+                            )
+                        }
+                    )
                 finding, pt, ct = await research_step(
                     step=step,
                     step_index=step_index,
@@ -201,6 +225,17 @@ async def _run_node(
         elif node_type == "Reporter":
             plan = _resolve_plan(config, workflow_input, outputs)
             findings = _resolve_findings(config, workflow_input, outputs)
+            if feedback_context:
+                findings.append(
+                    ResearchFinding(
+                        step_id="human_feedback",
+                        step_title="Human feedback",
+                        problem_statement="Apply the user's feedback to the final report.",
+                        findings_markdown=feedback_context,
+                        conclusion="The final report must reflect this feedback.",
+                        references=[],
+                    )
+                )
             markdown, prompt_tokens, completion_tokens = await generate_report(
                 plan=plan,
                 findings=findings,
@@ -294,6 +329,18 @@ async def _run_node(
     return result
 
 
+def _feedback_text(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _join_context(*parts: str) -> str:
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
 def _resolve_plan(
     config: dict[str, Any],
     workflow_input: dict[str, Any],
@@ -382,27 +429,20 @@ def _save_node_trace(
     elapsed_seconds: float,
     error: str,
 ) -> None:
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO workflow_node_runs
-           (node_run_id, run_id, workflow_id, user_id, node_id, node_type, status,
-            input_summary, output_summary, tool_calls_json, elapsed_seconds, error, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            f"wfn_{uuid.uuid4().hex[:12]}",
-            run_id,
-            workflow_id,
-            user_id,
-            node_id,
-            node_type,
-            status,
-            input_summary[:2000],
-            output_summary[:4000],
-            json.dumps(tool_calls, ensure_ascii=False),
-            elapsed_seconds,
-            error[:2000],
-            datetime.now().isoformat(),
-        ),
+    save_node_run(
+        {
+            "node_run_id": f"wfn_{uuid.uuid4().hex[:12]}",
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "user_id": user_id,
+            "node_id": node_id,
+            "node_type": node_type,
+            "status": status,
+            "input_summary": input_summary[:2000],
+            "output_summary": output_summary[:4000],
+            "tool_calls": tool_calls,
+            "elapsed_seconds": elapsed_seconds,
+            "error": error[:2000],
+            "created_at": datetime.now().isoformat(),
+        }
     )
-    conn.commit()
-    conn.close()

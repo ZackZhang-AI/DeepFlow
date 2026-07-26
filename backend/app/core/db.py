@@ -346,6 +346,41 @@ def init_db() -> None:
     _ensure_column(conn, "report_versions", "project_id", "TEXT")
     _ensure_column(conn, "shared_links", "expires_at", "TEXT")
     _ensure_column(conn, "shared_links", "revoked_at", "TEXT")
+    _ensure_column(conn, "shared_links", "workspace_id", "TEXT")
+    conn.execute(
+        """UPDATE artifacts
+           SET workspace_id = (
+                 SELECT workspace_id FROM research_tasks t WHERE t.task_id = artifacts.task_id
+               ),
+               project_id = (
+                 SELECT project_id FROM research_tasks t WHERE t.task_id = artifacts.task_id
+               )
+           WHERE workspace_id IS NULL"""
+    )
+    conn.execute(
+        """UPDATE report_versions
+           SET workspace_id = (
+                 SELECT workspace_id FROM research_tasks t WHERE t.task_id = report_versions.task_id
+               ),
+               project_id = (
+                 SELECT project_id FROM research_tasks t WHERE t.task_id = report_versions.task_id
+               )
+           WHERE workspace_id IS NULL"""
+    )
+    conn.execute(
+        """UPDATE shared_links
+           SET workspace_id = CASE resource_type
+               WHEN 'task_report' THEN (
+                   SELECT workspace_id FROM research_tasks t
+                   WHERE t.task_id = shared_links.resource_id
+               )
+               WHEN 'artifact' THEN (
+                   SELECT workspace_id FROM artifacts a
+                   WHERE a.artifact_id = shared_links.resource_id
+               )
+               END
+           WHERE workspace_id IS NULL"""
+    )
     _ensure_local_default_user(conn)
     for table in (
         "research_tasks",
@@ -378,619 +413,58 @@ def _ensure_local_default_user(conn: sqlite3.Connection) -> None:
         (LOCAL_DEFAULT_USER_ID, LOCAL_DEFAULT_USER_ID, "", now),
     )
 
-
-def create_user(user_id: str, username: str, password_hash: str) -> dict:
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO users (user_id, username, password_hash, created_at)
-           VALUES (?, ?, ?, ?)""",
-        (user_id, username, password_hash, now),
-    )
-    conn.commit()
-    conn.close()
-    return get_user_by_id(user_id)
-
-
-def get_user_by_id(user_id: str) -> Optional[dict]:
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def get_user_by_username(username: str) -> Optional[dict]:
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def create_auth_session(token_hash: str, user_id: str, expires_at: str) -> None:
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO auth_sessions (token_hash, user_id, expires_at, created_at)
-           VALUES (?, ?, ?, ?)""",
-        (token_hash, user_id, expires_at, now),
-    )
-    conn.commit()
-    conn.close()
-
-
-def get_auth_session(token_hash: str) -> Optional[dict]:
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM auth_sessions WHERE token_hash = ?", (token_hash,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def delete_auth_session(token_hash: str) -> bool:
-    conn = get_connection()
-    cursor = conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
-    conn.commit()
-    conn.close()
-    return cursor.rowcount > 0
-
-
-def delete_expired_auth_sessions(now: str) -> int:
-    conn = get_connection()
-    cursor = conn.execute("DELETE FROM auth_sessions WHERE expires_at <= ?", (now,))
-    conn.commit()
-    conn.close()
-    return cursor.rowcount
-
-
-def get_tool_setting(user_id: str, tool_id: str) -> bool | None:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT enabled FROM user_tool_settings WHERE user_id = ? AND tool_id = ?",
-        (user_id, tool_id),
-    ).fetchone()
-    conn.close()
-    return bool(row["enabled"]) if row else None
-
-
-def set_tool_setting(user_id: str, tool_id: str, enabled: bool) -> None:
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO user_tool_settings (user_id, tool_id, enabled, updated_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(user_id, tool_id) DO UPDATE SET
-             enabled = excluded.enabled, updated_at = excluded.updated_at""",
-        (user_id, tool_id, 1 if enabled else 0, now),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _task_user_id(task_id: str) -> str:
-    task = get_task(task_id)
-    return (task or {}).get("user_id") or LOCAL_DEFAULT_USER_ID
-
-
-def create_task(
-    task_id: str,
-    topic: str,
-    locale: str = "zh-CN",
-    search_domains: list[str] | None = None,
-    recency_days: int | None = None,
-    user_id: str = LOCAL_DEFAULT_USER_ID,
-    workspace_id: str | None = None,
-    project_id: str | None = None,
-    max_steps: int = 5,
-) -> dict:
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO research_tasks
-           (task_id, user_id, topic, locale, status, search_domains_json, recency_days,
-            workspace_id, project_id, max_steps, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            task_id,
-            user_id,
-            topic,
-            locale,
-            json.dumps(search_domains or [], ensure_ascii=False),
-            recency_days,
-            workspace_id,
-            project_id,
-            max_steps,
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return get_task(task_id)
-
-
-def get_task(task_id: str, user_id: str | None = None) -> Optional[dict]:
-    conn = get_connection()
-    if user_id is None:
-        row = conn.execute("SELECT * FROM research_tasks WHERE task_id = ?", (task_id,)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT * FROM research_tasks WHERE task_id = ? AND user_id = ?",
-            (task_id, user_id),
-        ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def update_task(task_id: str, owner_user_id: str | None = None, **kwargs) -> Optional[dict]:
-    kwargs["updated_at"] = datetime.now().isoformat()
-    if "errors_json" in kwargs and isinstance(kwargs["errors_json"], list):
-        kwargs["errors_json"] = json.dumps(kwargs["errors_json"], ensure_ascii=False)
-
-    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-    values = list(kwargs.values())
-
-    conn = get_connection()
-    if owner_user_id is None:
-        conn.execute(f"UPDATE research_tasks SET {set_clause} WHERE task_id = ?", values + [task_id])
-    else:
-        conn.execute(
-            f"UPDATE research_tasks SET {set_clause} WHERE task_id = ? AND user_id = ?",
-            values + [task_id, owner_user_id],
-        )
-    conn.commit()
-    conn.close()
-    return get_task(task_id, owner_user_id)
-
-
-def list_tasks(limit: int = 20, offset: int = 0, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            "SELECT * FROM research_tasks ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM research_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (user_id, limit, offset),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def save_step(
-    task_id: str,
-    step_index: int,
-    title: str,
-    description: str,
-    need_search: bool = True,
-    user_id: str | None = None,
-) -> str:
-    step_id = f"{task_id}_step_{step_index}"
-    user_id = user_id or _task_user_id(task_id)
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO research_steps
-           (step_id, task_id, user_id, step_index, title, description, need_search, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
-        (step_id, task_id, user_id, step_index, title, description, 1 if need_search else 0),
-    )
-    conn.commit()
-    conn.close()
-    return step_id
-
-
-def update_step(step_id: str, **kwargs) -> None:
-    if "sources_json" in kwargs and isinstance(kwargs["sources_json"], list):
-        kwargs["sources_json"] = json.dumps(kwargs["sources_json"], ensure_ascii=False)
-
-    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-    values = list(kwargs.values())
-
-    conn = get_connection()
-    conn.execute(f"UPDATE research_steps SET {set_clause} WHERE step_id = ?", values + [step_id])
-    conn.commit()
-    conn.close()
-
-
-def list_steps(task_id: str, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            "SELECT * FROM research_steps WHERE task_id = ? ORDER BY step_index",
-            (task_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT * FROM research_steps
-               WHERE task_id = ? AND user_id = ? ORDER BY step_index""",
-            (task_id, user_id),
-        ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
-
-def save_knowledge_document(
-    doc_id: str,
-    title: str,
-    content: str,
-    source_name: str = "",
-    source_type: str = "text",
-    status: str = "pending",
-    chunk_count: int = 0,
-    error_message: str = "",
-    metadata: dict | None = None,
-    user_id: str = LOCAL_DEFAULT_USER_ID,
-    workspace_id: str | None = None,
-    project_id: str | None = None,
-) -> dict:
-    now = datetime.now().isoformat()
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO knowledge_documents
-           (doc_id, user_id, title, content, source_name, source_type, status, chunk_count,
-            error_message, metadata_json, workspace_id, project_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            doc_id,
-            user_id,
-            title,
-            content,
-            source_name,
-            source_type,
-            status,
-            chunk_count,
-            error_message,
-            json.dumps(metadata or {}, ensure_ascii=False),
-            workspace_id,
-            project_id,
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return get_knowledge_document(doc_id)
-
-
-def update_knowledge_document(doc_id: str, owner_user_id: str | None = None, **kwargs) -> Optional[dict]:
-    kwargs["updated_at"] = datetime.now().isoformat()
-    if "metadata" in kwargs:
-        kwargs["metadata_json"] = json.dumps(kwargs.pop("metadata") or {}, ensure_ascii=False)
-
-    set_clause = ", ".join(f"{k} = ?" for k in kwargs)
-    values = list(kwargs.values())
-
-    conn = get_connection()
-    if owner_user_id is None:
-        conn.execute(
-            f"UPDATE knowledge_documents SET {set_clause} WHERE doc_id = ?",
-            values + [doc_id],
-        )
-    else:
-        conn.execute(
-            f"UPDATE knowledge_documents SET {set_clause} WHERE doc_id = ? AND user_id = ?",
-            values + [doc_id, owner_user_id],
-        )
-    conn.commit()
-    conn.close()
-    return get_knowledge_document(doc_id, owner_user_id)
-
-
-def get_knowledge_document(doc_id: str, user_id: str | None = None) -> Optional[dict]:
-    conn = get_connection()
-    if user_id is None:
-        row = conn.execute("SELECT * FROM knowledge_documents WHERE doc_id = ?", (doc_id,)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT * FROM knowledge_documents WHERE doc_id = ? AND user_id = ?",
-            (doc_id, user_id),
-        ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def list_knowledge_documents(limit: int = 50, offset: int = 0, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            """SELECT doc_id, user_id, title, source_name, source_type, length(content) AS content_length,
-                  status, chunk_count, error_message, metadata_json, created_at, updated_at
-           FROM knowledge_documents
-           ORDER BY updated_at DESC LIMIT ? OFFSET ?""",
-            (limit, offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT doc_id, user_id, title, source_name, source_type, length(content) AS content_length,
-                  status, chunk_count, error_message, metadata_json, created_at, updated_at
-           FROM knowledge_documents
-           WHERE user_id = ?
-           ORDER BY updated_at DESC LIMIT ? OFFSET ?""",
-            (user_id, limit, offset),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def delete_knowledge_document(doc_id: str, user_id: str | None = None) -> bool:
-    conn = get_connection()
-    if user_id is None:
-        conn.execute("DELETE FROM knowledge_chunks WHERE doc_id = ?", (doc_id,))
-        cur = conn.execute("DELETE FROM knowledge_documents WHERE doc_id = ?", (doc_id,))
-    else:
-        conn.execute("DELETE FROM knowledge_chunks WHERE doc_id = ? AND user_id = ?", (doc_id, user_id))
-        cur = conn.execute(
-            "DELETE FROM knowledge_documents WHERE doc_id = ? AND user_id = ?",
-            (doc_id, user_id),
-        )
-    conn.commit()
-    conn.close()
-    return cur.rowcount > 0
-
-
-def replace_knowledge_chunks(doc_id: str, chunks: list[dict], user_id: str | None = None) -> None:
-    conn = get_connection()
-    now = datetime.now().isoformat()
-    user_id = user_id or (get_knowledge_document(doc_id) or {}).get("user_id") or LOCAL_DEFAULT_USER_ID
-    conn.execute("DELETE FROM knowledge_chunks WHERE doc_id = ? AND user_id = ?", (doc_id, user_id))
-    conn.executemany(
-        """INSERT INTO knowledge_chunks
-           (chunk_id, doc_id, user_id, chunk_index, content, page_num, source_name,
-            embedding_json, metadata_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        [
-            (
-                chunk["chunk_id"],
-                doc_id,
-                user_id,
-                chunk["chunk_index"],
-                chunk["content"],
-                chunk.get("page_num"),
-                chunk.get("source_name") or "",
-                json.dumps(chunk["embedding"], ensure_ascii=False),
-                json.dumps(chunk.get("metadata") or {}, ensure_ascii=False),
-                now,
-            )
-            for chunk in chunks
-        ],
-    )
-    conn.commit()
-    conn.close()
-
-
-def list_knowledge_chunks(doc_id: str, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            """SELECT chunk_id, doc_id, user_id, chunk_index, content, page_num, source_name,
-                  metadata_json, created_at
-           FROM knowledge_chunks WHERE doc_id = ? ORDER BY chunk_index ASC""",
-            (doc_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT chunk_id, doc_id, user_id, chunk_index, content, page_num, source_name,
-                  metadata_json, created_at
-           FROM knowledge_chunks WHERE doc_id = ? AND user_id = ? ORDER BY chunk_index ASC""",
-            (doc_id, user_id),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def list_embedded_knowledge_chunks(user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            """SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
-                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
-           FROM knowledge_chunks c
-           JOIN knowledge_documents d ON d.doc_id = c.doc_id
-           WHERE d.status IN ('ready', 'completed')
-           ORDER BY d.updated_at DESC, c.chunk_index ASC"""
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
-                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
-           FROM knowledge_chunks c
-           JOIN knowledge_documents d ON d.doc_id = c.doc_id
-           WHERE d.status IN ('ready', 'completed') AND d.user_id = ?
-           ORDER BY d.updated_at DESC, c.chunk_index ASC""",
-            (user_id,),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def save_report_version(
-    task_id: str,
-    content_markdown: str,
-    change_note: str = "",
-    user_id: str | None = None,
-) -> str:
-    version_id = f"ver_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-    now = datetime.now().isoformat()
-    user_id = user_id or _task_user_id(task_id)
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO report_versions
-           (version_id, task_id, user_id, content_markdown, change_note, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (version_id, task_id, user_id, content_markdown, change_note, now),
-    )
-    conn.commit()
-    conn.close()
-    return version_id
-
-
-def list_report_versions(task_id: str, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            """SELECT version_id, task_id, user_id, change_note, created_at, length(content_markdown) AS content_length
-           FROM report_versions WHERE task_id = ? ORDER BY created_at DESC""",
-            (task_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT version_id, task_id, user_id, change_note, created_at, length(content_markdown) AS content_length
-           FROM report_versions WHERE task_id = ? AND user_id = ? ORDER BY created_at DESC""",
-            (task_id, user_id),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-def get_report_version(version_id: str, user_id: str | None = None) -> Optional[dict]:
-    conn = get_connection()
-    if user_id is None:
-        row = conn.execute("SELECT * FROM report_versions WHERE version_id = ?", (version_id,)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT * FROM report_versions WHERE version_id = ? AND user_id = ?",
-            (version_id, user_id),
-        ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def save_artifact(
-    artifact_id: str,
-    task_id: str,
-    artifact_type: str,
-    title: str,
-    content: str,
-    metadata: dict | None = None,
-    user_id: str | None = None,
-) -> dict:
-    now = datetime.now().isoformat()
-    user_id = user_id or _task_user_id(task_id)
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO artifacts
-           (artifact_id, task_id, user_id, artifact_type, title, content, metadata_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            artifact_id,
-            task_id,
-            user_id,
-            artifact_type,
-            title,
-            content,
-            json.dumps(metadata or {}, ensure_ascii=False),
-            now,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return get_artifact(artifact_id)
-
-
-def get_artifact(artifact_id: str, user_id: str | None = None) -> Optional[dict]:
-    conn = get_connection()
-    if user_id is None:
-        row = conn.execute("SELECT * FROM artifacts WHERE artifact_id = ?", (artifact_id,)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT * FROM artifacts WHERE artifact_id = ? AND user_id = ?",
-            (artifact_id, user_id),
-        ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def list_artifacts(task_id: str, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            """SELECT artifact_id, task_id, user_id, artifact_type, title, metadata_json, created_at
-           FROM artifacts WHERE task_id = ? ORDER BY created_at DESC""",
-            (task_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """SELECT artifact_id, task_id, user_id, artifact_type, title, metadata_json, created_at
-           FROM artifacts WHERE task_id = ? AND user_id = ? ORDER BY created_at DESC""",
-            (task_id, user_id),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-# ============================================================
-# Agent Trace
-# ============================================================
-
-def save_agent_run(
-    task_id: str,
-    agent_name: str,
-    phase: str,
-    status: str,
-    input_summary: str = "",
-    output_summary: str = "",
-    tool_calls: list[dict] | None = None,
-    prompt_tokens: int = 0,
-    completion_tokens: int = 0,
-    elapsed_seconds: float = 0.0,
-    error: str = "",
-    user_id: str | None = None,
-) -> dict:
-    run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-    now = datetime.now().isoformat()
-    user_id = user_id or _task_user_id(task_id)
-    conn = get_connection()
-    conn.execute(
-        """INSERT INTO agent_runs
-           (run_id, task_id, user_id, agent_name, phase, status, input_summary, output_summary,
-            tool_calls_json, prompt_tokens, completion_tokens, elapsed_seconds, error, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            run_id,
-            task_id,
-            user_id,
-            agent_name,
-            phase,
-            status,
-            input_summary[:2000],
-            output_summary[:4000],
-            json.dumps(tool_calls or [], ensure_ascii=False),
-            prompt_tokens,
-            completion_tokens,
-            elapsed_seconds,
-            error[:2000],
-            now,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return get_agent_run(run_id)
-
-
-def get_agent_run(run_id: str, user_id: str | None = None) -> Optional[dict]:
-    conn = get_connection()
-    if user_id is None:
-        row = conn.execute("SELECT * FROM agent_runs WHERE run_id = ?", (run_id,)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT * FROM agent_runs WHERE run_id = ? AND user_id = ?",
-            (run_id, user_id),
-        ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def list_agent_runs(task_id: str, user_id: str | None = None) -> list[dict]:
-    conn = get_connection()
-    if user_id is None:
-        rows = conn.execute(
-            "SELECT * FROM agent_runs WHERE task_id = ? ORDER BY created_at ASC",
-            (task_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM agent_runs WHERE task_id = ? AND user_id = ? ORDER BY created_at ASC",
-            (task_id, user_id),
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+_REPOSITORY_EXPORTS = {
+    "create_auth_session": "backend.app.repositories.auth",
+    "create_task": "backend.app.repositories.research",
+    "create_user": "backend.app.repositories.auth",
+    "delete_auth_session": "backend.app.repositories.auth",
+    "delete_expired_auth_sessions": "backend.app.repositories.auth",
+    "delete_knowledge_document": "backend.app.repositories.knowledge",
+    "get_agent_run": "backend.app.repositories.research",
+    "get_artifact": "backend.app.repositories.artifact",
+    "get_auth_session": "backend.app.repositories.auth",
+    "get_knowledge_document": "backend.app.repositories.knowledge",
+    "get_report_version": "backend.app.repositories.artifact",
+    "get_task": "backend.app.repositories.research",
+    "get_tool_setting": "backend.app.repositories.tool",
+    "get_user_by_id": "backend.app.repositories.auth",
+    "get_user_by_username": "backend.app.repositories.auth",
+    "list_agent_runs": "backend.app.repositories.research",
+    "list_artifacts": "backend.app.repositories.artifact",
+    "list_embedded_knowledge_chunks": "backend.app.repositories.knowledge",
+    "list_knowledge_chunks": "backend.app.repositories.knowledge",
+    "list_knowledge_documents": "backend.app.repositories.knowledge",
+    "list_report_versions": "backend.app.repositories.artifact",
+    "list_steps": "backend.app.repositories.research",
+    "list_tasks": "backend.app.repositories.research",
+    "replace_knowledge_chunks": "backend.app.repositories.knowledge",
+    "save_agent_run": "backend.app.repositories.research",
+    "save_artifact": "backend.app.repositories.artifact",
+    "save_knowledge_document": "backend.app.repositories.knowledge",
+    "save_report_version": "backend.app.repositories.artifact",
+    "save_step": "backend.app.repositories.research",
+    "set_tool_setting": "backend.app.repositories.tool",
+    "update_knowledge_document": "backend.app.repositories.knowledge",
+    "update_step": "backend.app.repositories.research",
+    "update_task": "backend.app.repositories.research",
+}
+
+
+def __getattr__(name: str):
+    """Keep legacy imports working while persistence lives in repositories."""
+    module_name = _REPOSITORY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from importlib import import_module
+
+    return getattr(import_module(module_name), name)
+
+
+__all__ = [
+    "DB_PATH",
+    "LOCAL_DEFAULT_USER_ID",
+    "get_connection",
+    "get_db_path",
+    "init_db",
+    *_REPOSITORY_EXPORTS,
+]

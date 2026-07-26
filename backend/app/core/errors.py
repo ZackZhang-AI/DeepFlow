@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from fastapi import HTTPException
 
 
 @dataclass(frozen=True)
@@ -10,6 +13,49 @@ class Failure:
     code: str
     message: str
     retryable: bool
+
+
+class APIError(HTTPException):
+    """HTTP error with a stable machine-readable code."""
+
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        *,
+        details: Any = None,
+    ) -> None:
+        super().__init__(status_code=status_code, detail=message)
+        self.code = code
+        self.details = details
+
+
+def http_error_payload(exc: HTTPException) -> dict[str, Any]:
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else "Request failed"
+    code = getattr(exc, "code", None) or _status_code(exc.status_code)
+    return {
+        "error_code": code,
+        "message": message,
+        "detail": detail,
+        "details": getattr(exc, "details", None),
+    }
+
+
+def _status_code(status_code: int) -> str:
+    return {
+        400: "bad_request",
+        401: "authentication_required",
+        403: "permission_denied",
+        404: "resource_not_found",
+        409: "resource_conflict",
+        410: "resource_expired",
+        413: "payload_too_large",
+        422: "validation_error",
+        429: "rate_limited",
+        503: "service_unavailable",
+    }.get(status_code, "request_failed")
 
 
 def classify_failure(exc: BaseException) -> Failure:

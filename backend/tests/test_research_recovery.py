@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from backend.app.api.routes.research import _task_response
 from backend.app.core import db
 from backend.app.core.events import append_event, list_events
 from backend.app.core.job_queue import (
@@ -109,3 +110,23 @@ def test_placeholder_provider_key_is_not_usable():
     assert _usable_key("tvly-real-value")
     assert not _usable_key("your-serpapi-api-key")
     assert not _usable_key("")
+
+
+def test_completed_task_progress_uses_percentage_scale():
+    response = _task_response(
+        {
+            "task_id": "task_progress",
+            "topic": "Progress",
+            "locale": "zh-CN",
+            "status": "completed",
+            "current_step": 2,
+            "total_steps": 2,
+            "report_markdown": "# Done",
+            "clarification_json": "[]",
+            "retryable": 0,
+            "created_at": "2026-07-26T00:00:00",
+            "updated_at": "2026-07-26T00:00:00",
+        }
+    )
+
+    assert response.progress == 100.0
