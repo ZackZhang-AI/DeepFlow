@@ -4,15 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  APIRequestError,
   createResearch,
   getAuthToken,
   getCurrentUser,
+  getSystemReadiness,
   listResearchTasks,
   redirectToLogin,
 } from "@/lib/api";
 import { ResearchComposer, RESEARCH_DEPTHS, type ResearchDepth } from "@/components/ResearchComposer";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
-import type { ResearchStatus, ResearchTask } from "@/lib/types";
+import { ProviderReadinessCard } from "@/components/research/ProviderReadinessCard";
+import type { ProviderReadiness, ResearchStatus, ResearchTask } from "@/lib/types";
 
 const STATUS_LABELS: Record<ResearchStatus, string> = {
   coordinating: "分析需求",
@@ -39,7 +42,7 @@ export default function Home() {
   const router = useRouter();
   const [topic, setTopic] = useState("");
   const [selectedQuickPrompt, setSelectedQuickPrompt] = useState<string | null>(null);
-  const [researchDepth, setResearchDepth] = useState<ResearchDepth>("standard");
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>("fast");
   const [sourceDomains, setSourceDomains] = useState("");
   const [recencyDays, setRecencyDays] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +50,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [recentTasks, setRecentTasks] = useState<ResearchTask[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
+  const [readiness, setReadiness] = useState<ProviderReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(true);
 
   const selectedDepth = useMemo(
     () => RESEARCH_DEPTHS.find((item) => item.id === researchDepth) ?? RESEARCH_DEPTHS[1],
@@ -66,10 +71,28 @@ export default function Home() {
         setAuthChecking(false);
         setRecentLoading(false);
       });
+
+    getSystemReadiness(true)
+      .then(setReadiness)
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Provider 状态检查失败"))
+      .finally(() => setReadinessLoading(false));
+  }, []);
+
+  const refreshReadiness = useCallback(async () => {
+    setReadinessLoading(true);
+    setError(null);
+    try {
+      setReadiness(await getSystemReadiness(true));
+    } catch (reason) {
+      setReadiness(null);
+      setError(reason instanceof Error ? reason.message : "Provider 状态检查失败");
+    } finally {
+      setReadinessLoading(false);
+    }
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!topic.trim() || submitting) return;
+    if (!topic.trim() || submitting || !readiness?.ready) return;
     setSubmitting(true);
     setError(null);
 
@@ -79,13 +102,40 @@ export default function Home() {
         .map((item) => item.trim())
         .filter(Boolean);
       const recency = recencyDays ? Number(recencyDays) : undefined;
-      const task = await createResearch(topic.trim(), "zh-CN", selectedDepth.maxSteps, domains, recency);
+      const task = await createResearch(
+        topic.trim(),
+        "zh-CN",
+        selectedDepth.maxSteps,
+        domains,
+        recency,
+        undefined,
+        researchDepth,
+      );
       router.push(`/research/${task.task_id}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "创建研究失败");
+      if (
+        reason instanceof APIRequestError
+        && (reason.status === 402 || reason.errorCode === "provider_balance_exhausted")
+      ) {
+        setError("模型账户余额不足，请充值后重新检查 Provider。");
+        setReadiness((current) => current
+          ? {
+              ...current,
+              ready: false,
+              model: {
+                ...current.model,
+                ready: false,
+                error_code: "provider_balance_exhausted",
+                reason: "模型账户余额不足，请充值后重新检查。",
+              },
+            }
+          : current);
+      } else {
+        setError(reason instanceof Error ? reason.message : "创建研究失败");
+      }
       setSubmitting(false);
     }
-  }, [recencyDays, router, selectedDepth.maxSteps, sourceDomains, submitting, topic]);
+  }, [readiness?.ready, recencyDays, researchDepth, router, selectedDepth.maxSteps, sourceDomains, submitting, topic]);
 
   if (authChecking) {
     return (
@@ -122,6 +172,12 @@ export default function Home() {
             </div>
           )}
 
+          <ProviderReadinessCard
+            readiness={readiness}
+            loading={readinessLoading}
+            onRefresh={() => void refreshReadiness()}
+          />
+
           <ResearchComposer
             topic={topic}
             selectedQuickPrompt={selectedQuickPrompt}
@@ -130,6 +186,15 @@ export default function Home() {
             recencyDays={recencyDays}
             isPlanning={submitting}
             isClarifying={false}
+            creationDisabledReason={
+              readinessLoading
+                ? "正在确认模型与搜索服务，请稍候。"
+                : readiness?.ready
+                  ? undefined
+                  : readiness?.model.error_code === "provider_balance_exhausted"
+                    ? "模型账户余额不足，请充值后重新检查。"
+                    : "研究服务尚未就绪，请检查 Provider 配置后重新检查。"
+            }
             onTopicChange={(value) => {
               setTopic(value);
               setSelectedQuickPrompt(null);

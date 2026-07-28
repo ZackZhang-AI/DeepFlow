@@ -24,8 +24,14 @@ const plan = {
   ],
 };
 
-function task(status: string) {
+function task(status: string, errorCode = "provider_timeout") {
   const completed = status === "completed";
+  const failureMessages: Record<string, string> = {
+    provider_timeout: "搜索服务暂时不可用",
+    provider_balance_exhausted: "模型账户余额不足",
+    budget_exceeded: "本次研究已达到预算上限",
+    search_credits_exhausted: "搜索额度已用尽",
+  };
   return {
     task_id: TASK_ID,
     topic: "AI 产品研究",
@@ -38,12 +44,33 @@ function task(status: string) {
     report_id: completed ? `rep_${TASK_ID}` : null,
     clarification_questions: [],
     retryable: status === "failed",
-    error_code: status === "failed" ? "provider_timeout" : "",
-    error_message: status === "failed" ? "搜索服务暂时不可用" : "",
+    error_code: status === "failed" ? errorCode : "",
+    error_message: status === "failed" ? failureMessages[errorCode] || "研究执行失败" : "",
     last_event_seq: completed ? 6 : 2,
     plan,
     created_at: now,
     updated_at: now,
+    budget: {
+      profile: "fast",
+      max_steps: 3,
+      max_search_calls_per_step: 1,
+      max_crawl_pages_per_step: 1,
+      max_tokens: 20000,
+      search_depth: "basic",
+    },
+    usage: {
+      prompt_tokens: 800,
+      completion_tokens: 400,
+      total_tokens: 1200,
+      estimated_cost_rmb: 0.08,
+      search_calls: 2,
+      crawl_calls: 1,
+      search_credits: 2,
+      planner_model: "deepseek-v4-flash",
+      researcher_model: "deepseek-v4-flash",
+      reporter_model: "deepseek-v4-flash",
+    },
+    budget_percent: 6,
   };
 }
 
@@ -59,7 +86,7 @@ const report = {
   created_at: now,
 };
 
-async function installApiMock(page: Page, initialStatus: string) {
+async function installApiMock(page: Page, initialStatus: string, errorCode = "provider_timeout") {
   let status = initialStatus;
   await page.addInitScript(() => {
     window.localStorage.setItem("deepflow.auth.token", "e2e-token");
@@ -72,12 +99,12 @@ async function installApiMock(page: Page, initialStatus: string) {
     if (path.endsWith(`/research-tasks/${TASK_ID}/confirm-plan`)) {
       const body = request.postDataJSON() as { action?: string };
       if (body.action === "accept") status = "completed";
-      await route.fulfill({ json: task(status) });
+      await route.fulfill({ json: task(status, errorCode) });
       return;
     }
     if (path.endsWith(`/research-tasks/${TASK_ID}/retry`)) {
       status = "completed";
-      await route.fulfill({ json: task(status) });
+      await route.fulfill({ json: task(status, errorCode) });
       return;
     }
     if (path.endsWith(`/research-tasks/${TASK_ID}/events`)) {
@@ -93,7 +120,7 @@ async function installApiMock(page: Page, initialStatus: string) {
       return;
     }
     if (path.endsWith(`/research-tasks/${TASK_ID}`)) {
-      await route.fulfill({ json: task(status) });
+      await route.fulfill({ json: task(status, errorCode) });
       return;
     }
     if (path.endsWith(`/reports/${TASK_ID}/versions`)) {
@@ -146,6 +173,10 @@ test("计划确认后可完成、刷新恢复并定位知识库原文", async ({
 
   await expect(page.getByText("研究完成").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "报告工作区" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "预算与用量" })).toBeVisible();
+  await expect(page.getByText("deepseek-v4-flash").first()).toBeVisible();
+  await expect(page.getByText("¥0.080")).toBeVisible();
+  await expect(page.getByText("搜索 Credits").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "保存", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "版本" })).toBeVisible();
   await expect(page.getByRole("button", { name: "PPTX" })).toBeVisible();
@@ -155,6 +186,131 @@ test("计划确认后可完成、刷新恢复并定位知识库原文", async ({
   await page.getByRole("button", { name: "定位原文" }).click();
   await expect(page.getByText("这是一段可追溯的知识库原文证据。")).toBeVisible();
   await expect(page.getByText(/第 8 页/)).toBeVisible();
+});
+
+test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ page }) => {
+  let ready = false;
+  let requestBudgetProfile = "";
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("deepflow.auth.token", "e2e-token");
+  });
+  await page.route("http://localhost:8000/api/**", async (route: Route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+
+    if (path.endsWith("/auth/me")) {
+      await route.fulfill({ json: { user_id: "user-e2e", username: "deepflow" } });
+      return;
+    }
+    if (path.endsWith("/system/readiness")) {
+      await route.fulfill({
+        json: {
+          ready,
+          model: {
+            configured: true,
+            ready,
+            reason: ready ? "Provider ready" : "Insufficient balance",
+            models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+            probed: true,
+            checked_at: now,
+            error_code: ready ? "" : "provider_balance_exhausted",
+          },
+          search: { configured: true, ready: true, reason: "Search ready" },
+          embedding: { configured: false, ready: false, reason: "Optional" },
+          docker: { configured: false, ready: false, reason: "Disabled" },
+          database: { configured: true, ready: true, reason: "Database ready" },
+        },
+      });
+      return;
+    }
+    if (path.endsWith("/research-tasks") && request.method() === "GET") {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (path.endsWith("/research-tasks") && request.method() === "POST") {
+      const body = request.postDataJSON() as { budget_profile?: string };
+      requestBudgetProfile = body.budget_profile || "";
+      await route.fulfill({ status: 201, json: task("clarifying") });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { detail: `Unhandled E2E route: ${path}` } });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("radio", { name: /快速研究/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("预计 ¥0.05–0.30")).toBeVisible();
+  await expect(page.getByText("模型账户余额不足，请充值后重新检查。")).toBeVisible();
+  await page.getByLabel("研究主题").fill("低成本 AI Agent 市场研究");
+  const createButton = page.getByRole("button", { name: "生成研究报告" });
+  await expect(createButton).toBeDisabled();
+
+  ready = true;
+  await page.getByRole("button", { name: "重新检查" }).click();
+  await expect(page.getByText("研究服务已就绪")).toBeVisible();
+  await createButton.click();
+  await expect.poll(() => requestBudgetProfile).toBe("fast");
+});
+
+test("历史页展示用户累计费用与搜索 Credits", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("deepflow.auth.token", "e2e-token");
+  });
+  await page.route("http://localhost:8000/api/**", async (route: Route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/auth/me")) {
+      await route.fulfill({ json: { user_id: "user-e2e", username: "deepflow" } });
+      return;
+    }
+    if (path.endsWith("/research-tasks/usage-summary")) {
+      await route.fulfill({
+        json: {
+          total_tasks: 10,
+          completed_tasks: 9,
+          failed_tasks: 1,
+          total_cost_rmb: 2.35,
+          avg_cost_rmb: 0.24,
+          total_tokens: 125000,
+          total_search_credits: 34,
+        },
+      });
+      return;
+    }
+    if (path.endsWith("/research-tasks")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (path.endsWith("/knowledge-documents")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { detail: `Unhandled E2E route: ${path}` } });
+  });
+
+  await page.goto("/history");
+  await expect(page.getByText("¥2.35")).toBeVisible();
+  await expect(page.getByText("12.5万")).toBeVisible();
+  await expect(page.getByText("34", { exact: true })).toBeVisible();
+  await expect(page.getByText("失败率")).toBeVisible();
+  await expect(page.getByText("10%")).toBeVisible();
+});
+
+test("费用与搜索额度错误提供对应中文恢复动作", async ({ context }) => {
+  const scenarios = [
+    ["provider_balance_exhausted", "模型账户余额不足", "返回首页检查 Provider"],
+    ["budget_exceeded", "本次研究已达到预算上限", "新建更高预算研究"],
+    ["search_credits_exhausted", "搜索额度已用尽", "返回首页检查 Provider"],
+  ] as const;
+
+  for (const [errorCode, heading, action] of scenarios) {
+    const page = await context.newPage();
+    await installApiMock(page, "failed", errorCode);
+    await page.goto(`/research/${TASK_ID}`);
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(page.getByRole("link", { name: action })).toBeVisible();
+    await page.close();
+  }
 });
 
 test("失败任务可从失败阶段重试，移动端和桌面端均无横向溢出", async ({ page }) => {

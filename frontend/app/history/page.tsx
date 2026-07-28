@@ -8,6 +8,7 @@ import {
   getAuthToken,
   getCurrentUser,
   getReport,
+  getResearchUsageSummary,
   listKnowledgeDocuments,
   listResearchTasks,
   listTaskArtifacts,
@@ -16,7 +17,8 @@ import {
 } from "@/lib/api";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { Button, getButtonClasses } from "@/components/ui/Button";
-import type { Artifact, AuthUser, KnowledgeDocument, Report, ResearchStatus, ResearchTask } from "@/lib/types";
+import { UsageSummaryStrip } from "@/components/history/UsageSummaryStrip";
+import type { Artifact, AuthUser, KnowledgeDocument, Report, ResearchStatus, ResearchTask, UsageSummary } from "@/lib/types";
 
 type AssetTab = "tasks" | "artifacts" | "knowledge";
 type SelectedPanel = "report" | "error" | "progress" | null;
@@ -108,6 +110,7 @@ export default function HistoryPage() {
   const [selectedPanel, setSelectedPanel] = useState<SelectedPanel>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [loadingReportTask, setLoadingReportTask] = useState<string | null>(null);
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
 
   const stats = useMemo(() => {
     const completed = tasks.filter((task) => task.status === "completed").length;
@@ -119,8 +122,10 @@ export default function HistoryPage() {
     setLoading(true);
     setAssetError(null);
     try {
+      const usageSummaryPromise = getResearchUsageSummary().catch(() => null);
       const loadedTasks = await listResearchTasks(50);
       setTasks(loadedTasks);
+      setUsageSummary(await usageSummaryPromise);
 
       const tasksForArtifacts = loadedTasks.filter((task) => task.status === "completed").slice(0, 20);
       const artifactResults = await Promise.allSettled(
@@ -242,6 +247,8 @@ export default function HistoryPage() {
             <span aria-hidden="true">+</span> 新建研究
           </Link>
         </div>
+
+        <UsageSummaryStrip summary={usageSummary} />
 
         <div className="mb-5 flex flex-wrap gap-x-6 gap-y-2 border-y border-[var(--border)] py-3 text-sm text-[var(--muted)]">
           <span>研究任务 <strong className="ml-1 font-semibold text-[var(--ink)]">{tasks.length}</strong></span>

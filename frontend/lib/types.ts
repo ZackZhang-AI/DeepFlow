@@ -30,6 +30,43 @@ export interface ResearchTask {
   error_message: string;
   last_event_seq: number;
   plan: ResearchPlan | null;
+  budget: TaskBudget;
+  usage: TaskUsage;
+  budget_percent: number;
+}
+
+export type BudgetProfile = "fast" | "standard" | "deep";
+
+export interface TaskBudget {
+  profile: BudgetProfile;
+  max_steps: number;
+  max_search_calls_per_step: number;
+  max_crawl_pages_per_step: number;
+  max_tokens: number;
+  search_depth: "basic" | "advanced";
+}
+
+export interface TaskUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_rmb: number;
+  search_calls: number;
+  crawl_calls: number;
+  search_credits: number;
+  planner_model: string;
+  researcher_model: string;
+  reporter_model: string;
+}
+
+export interface UsageSummary {
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  total_cost_rmb: number;
+  avg_cost_rmb: number;
+  total_tokens: number;
+  total_search_credits: number;
 }
 
 export type ResearchPhase = ResearchStatus | "reporting";
@@ -128,9 +165,16 @@ export interface ReadinessItem {
   reason: string;
 }
 
+export interface ModelReadiness extends ReadinessItem {
+  models: string[];
+  probed: boolean;
+  checked_at: string | null;
+  error_code: string;
+}
+
 export interface ProviderReadiness {
   ready: boolean;
-  model: ReadinessItem;
+  model: ModelReadiness;
   search: ReadinessItem;
   embedding: ReadinessItem;
   docker: ReadinessItem;

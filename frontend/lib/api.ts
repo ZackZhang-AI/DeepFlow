@@ -26,6 +26,8 @@ import type {
   WorkflowRun,
   Workspace,
   WorkspaceRole,
+  BudgetProfile,
+  UsageSummary,
 } from "@/lib/types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -36,6 +38,18 @@ export class AuthExpiredError extends Error {
   constructor(message = "登录状态已失效，请重新登录") {
     super(message);
     this.name = "AuthExpiredError";
+  }
+}
+
+export class APIRequestError extends Error {
+  status: number;
+  errorCode: string;
+
+  constructor(message: string, status: number, errorCode = "") {
+    super(message);
+    this.name = "APIRequestError";
+    this.status = status;
+    this.errorCode = errorCode;
   }
 }
 
@@ -61,17 +75,28 @@ export function redirectToLogin() {
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
-function getErrorMessage(text: string, fallback: string) {
-  if (!text) return fallback;
+function getErrorPayload(text: string, fallback: string) {
+  if (!text) return { message: fallback, errorCode: "" };
   try {
-    const parsed = JSON.parse(text) as { detail?: unknown; message?: unknown; error?: unknown };
+    const parsed = JSON.parse(text) as {
+      detail?: unknown;
+      message?: unknown;
+      error?: unknown;
+      error_code?: unknown;
+    };
     const value = parsed.detail ?? parsed.message ?? parsed.error;
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) return value.map(String).join("\n");
+    const message = typeof value === "string"
+      ? value
+      : Array.isArray(value)
+        ? value.map(String).join("\n")
+        : fallback;
+    return {
+      message,
+      errorCode: typeof parsed.error_code === "string" ? parsed.error_code : "",
+    };
   } catch {
-    return text;
+    return { message: text, errorCode: "" };
   }
-  return text;
 }
 
 function withAuthHeader(headers: Headers, token: string | null) {
@@ -99,7 +124,8 @@ export async function authFetch(input: string, init: RequestInit = {}) {
 
 async function readJson<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
-    throw new Error(getErrorMessage(await res.text(), fallback));
+    const payload = getErrorPayload(await res.text(), fallback);
+    throw new APIRequestError(payload.message, res.status, payload.errorCode);
   }
   return res.json() as Promise<T>;
 }
@@ -153,6 +179,7 @@ export async function createResearch(
   searchDomains: string[] = [],
   recencyDays?: number,
   scope?: { workspaceId?: string; projectId?: string },
+  budgetProfile: BudgetProfile = "fast",
 ): Promise<ResearchTask> {
   return authJson<ResearchTask>(
     "/api/research-tasks",
@@ -167,6 +194,7 @@ export async function createResearch(
         recency_days: recencyDays,
         workspace_id: scope?.workspaceId,
         project_id: scope?.projectId,
+        budget_profile: budgetProfile,
       }),
     },
     "创建研究失败",
@@ -192,13 +220,18 @@ export async function retryResearchTask(taskId: string) {
   );
 }
 
-export async function getSystemReadiness() {
-  return authJson<ProviderReadiness>("/api/system/readiness");
+export async function getSystemReadiness(probe = false) {
+  const params = probe ? "?probe=true" : "";
+  return authJson<ProviderReadiness>(`/api/system/readiness${params}`);
 }
 
 export async function listResearchTasks(limit = 50, offset = 0) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   return authJson<ResearchTask[]>(`/api/research-tasks?${params.toString()}`);
+}
+
+export async function getResearchUsageSummary() {
+  return authJson<UsageSummary>("/api/research-tasks/usage-summary");
 }
 
 export async function getReport(taskId: string) {
@@ -476,7 +509,10 @@ export async function listWorkflowTrace(runId: string) {
 
 export async function downloadWithAuth(path: string, filename: string) {
   const res = await authFetch(path);
-  if (!res.ok) throw new Error(getErrorMessage(await res.text(), "下载失败"));
+  if (!res.ok) {
+    const payload = getErrorPayload(await res.text(), "下载失败");
+    throw new APIRequestError(payload.message, res.status, payload.errorCode);
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

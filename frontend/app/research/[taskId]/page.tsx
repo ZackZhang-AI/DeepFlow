@@ -21,6 +21,7 @@ import { ReportWorkspace } from "@/components/research/ReportWorkspace";
 import { ResearchProgress } from "@/components/research/ResearchProgress";
 import { ResearchStatusHeader } from "@/components/research/ResearchStatusHeader";
 import { SourceInspector } from "@/components/research/SourceInspector";
+import { TaskBudgetPanel } from "@/components/research/TaskBudgetPanel";
 import type { Report, ResearchStep, ResearchTask } from "@/lib/types";
 
 interface DisplayEvent {
@@ -275,6 +276,7 @@ export default function ResearchTaskPage() {
           </div>
 
           <aside className="min-w-0 space-y-5 lg:sticky lg:top-20 lg:self-start">
+            <TaskBudgetPanel task={task} />
             <SourceInspector events={events} report={report} />
             {task.plan && task.status !== "awaiting_confirmation" && !(task.status === "failed" && editingFailedPlan) && (
               <section className="rounded-xl border border-[var(--border)] bg-white p-4" aria-labelledby="plan-summary-heading">
