@@ -2,6 +2,19 @@
 
 输入一个研究主题，多 Agent 协作自动完成 **资料收集 → 分析 → 报告撰写**，5 分钟产出带 50+ 真实引用的结构化研究报告。
 
+## 产品预览
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/readme-home.png" alt="DeepFlow 研究创建页"></td>
+    <td width="50%"><img src="docs/images/readme-history.png" alt="DeepFlow 研究历史页"></td>
+  </tr>
+  <tr>
+    <td align="center">创建研究任务</td>
+    <td align="center">查看研究历史</td>
+  </tr>
+</table>
+
 ## 核心能力
 
 - **多 Agent 协作**：Coordinator（意图分析）→ Planner（计划生成）→ Researcher（联网搜索）→ Coder（数据分析）→ Reporter（报告撰写）
@@ -68,12 +81,70 @@ cd frontend && npm install && npm run dev
 
 ## 研究流程
 
+```mermaid
+flowchart LR
+    A[输入研究主题] --> B[Coordinator<br/>识别意图与研究类型]
+    B --> C[Planner<br/>生成 3-8 步研究计划]
+    C --> D{用户确认计划}
+    D -->|修改| C
+    D -->|通过| E[Researcher × N<br/>搜索、抓取、总结]
+    D -->|通过| F[Coder<br/>沙箱计算与可视化]
+    E --> G[Reporter<br/>整合证据与引用]
+    F --> G
+    G --> H[结构化研究报告]
+    H --> I[Artifact Agents<br/>播客 / PPT / 润色 / 扩写 / 精简]
 ```
-用户输入主题 → Coordinator(意图分类) → Planner(生成3-5步计划)
-                                              ↓ 用户确认
-        Reporter(6段结构报告) ← Researcher×N(搜索+抓取+总结) + Coder(沙箱执行)
-              ↓
-    Artifact Agents: 播客脚本 / PPT幻灯片 / 文本润色扩展精简
+
+## 系统架构
+
+```mermaid
+flowchart TB
+    subgraph Interfaces[交互层]
+        Web[Next.js Web 工作台]
+        CLI[Python CLI]
+    end
+
+    subgraph Backend[应用与任务层]
+        API[FastAPI]
+        TaskService[后台研究任务]
+        SSE[SSE 实时进度]
+        DB[(SQLite)]
+    end
+
+    subgraph Engine[Agent 编排引擎]
+        StateMachine[asyncio 状态机]
+        Coordinator
+        Planner
+        Researcher
+        Coder
+        Reporter
+        ArtifactAgents[Artifact Agents]
+    end
+
+    subgraph Tools[工具与外部服务]
+        Tavily[Tavily Search]
+        Fetcher[网页抓取]
+        Sandbox[Python 隔离沙箱]
+        LLM[DeepSeek]
+    end
+
+    Web --> API
+    CLI --> StateMachine
+    API --> TaskService --> StateMachine
+    TaskService --> DB
+    TaskService --> SSE --> Web
+    StateMachine --> Coordinator --> Planner
+    Planner --> Researcher
+    Planner --> Coder
+    Researcher --> Reporter
+    Coder --> Reporter
+    Reporter --> ArtifactAgents
+    Coordinator --> LLM
+    Planner --> LLM
+    Researcher --> Tavily
+    Researcher --> Fetcher
+    Coder --> Sandbox
+    Reporter --> LLM
 ```
 
 ## 成本
