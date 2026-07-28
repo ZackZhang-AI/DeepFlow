@@ -4,6 +4,12 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 当前版本严格围绕 `AI产品需求文档.pdf` 落地，继续保持轻量架构：FastAPI + SQLite + Next.js，不引入 Milvus、MinIO、Celery、LangGraph 或额外企业平台能力。
 
+## 产品预览
+
+![DeepFlow 深度研究工作台](docs/images/readme-workbench.png)
+
+登录后的研究工作台集中展示研究主题、来源范围、研究深度与报告生成入口。
+
 ## 已实现能力
 
 ### 研究主流程
