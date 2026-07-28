@@ -3,7 +3,7 @@ API 请求/响应 Schema (Pydantic)
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -38,11 +38,45 @@ class CreateResearchRequest(BaseModel):
     """创建研究任务"""
     topic: str = Field(..., min_length=1, max_length=500, description="研究主题")
     locale: str = Field(default="zh-CN", description="语言")
+    budget_profile: Literal["fast", "standard", "deep"] = "fast"
     max_steps: int = Field(default=5, ge=2, le=8, description="最大步骤数")
     search_domains: list[str] = Field(default_factory=list, description="优先或限定搜索域名")
     recency_days: Optional[int] = Field(default=None, ge=1, le=3650, description="优先检索最近 N 天内容")
     workspace_id: Optional[str] = None
     project_id: Optional[str] = None
+
+
+class TaskBudget(BaseModel):
+    profile: str
+    max_steps: int
+    max_search_calls_per_step: int
+    max_crawl_pages_per_step: int
+    max_tokens: int
+    search_depth: str
+
+
+class TaskUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_rmb: float = 0.0
+    search_calls: int = 0
+    crawl_calls: int = 0
+    search_credits: int = 0
+    planner_model: str = ""
+    researcher_model: str = ""
+    reporter_model: str = ""
+    pricing_version: str = ""
+
+
+class UsageSummary(BaseModel):
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    failed_tasks: int = 0
+    total_cost_rmb: float = 0.0
+    avg_cost_rmb: float = 0.0
+    total_tokens: int = 0
+    total_search_credits: int = 0
 
 
 class ResearchTaskResponse(BaseModel):
@@ -62,6 +96,9 @@ class ResearchTaskResponse(BaseModel):
     error_message: str = ""
     last_event_seq: int = 0
     plan: Optional[dict] = None
+    budget: TaskBudget
+    usage: TaskUsage
+    budget_percent: float = 0.0
     created_at: str
     updated_at: str
 

@@ -14,12 +14,14 @@ from backend.app.models.schemas import (
     CreateResearchRequest,
     ResearchTaskResponse,
     ConfirmPlanRequest,
+    UsageSummary,
 )
 from backend.app.repositories.research import (
     create_task,
     get_task,
     list_agent_runs,
     list_tasks,
+    get_usage_summary,
     update_task,
 )
 from backend.app.core.auth import require_login
@@ -31,6 +33,8 @@ from backend.app.core.access import require_scope_access, require_task_access
 from backend.app.core.events import get_last_event_sequence
 from backend.app.core.job_queue import enqueue_job
 from cli.config import Config
+from cli.budget import budget_from_task, get_budget
+from cli.pricing import PRICING_VERSION
 
 router = APIRouter(prefix="/api/research-tasks", tags=["research"])
 
@@ -49,7 +53,11 @@ async def create_research_task(
         req.project_id,
         write=True,
     )
-    max_steps = min(req.max_steps, Config.MAX_STEPS)
+    budget = get_budget(req.budget_profile)
+    max_steps = min(budget.max_steps, Config.MAX_STEPS)
+    reporter_model = (
+        Config.PLANNER_MODEL if budget.profile == "fast" else Config.REPORTER_MODEL
+    )
     task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
     # 创建数据库记录
@@ -62,7 +70,16 @@ async def create_research_task(
         user_id=user["user_id"],
         workspace_id=req.workspace_id,
         project_id=req.project_id,
+        budget_profile=budget.profile,
         max_steps=max_steps,
+        max_search_calls_per_step=budget.max_search_calls_per_step,
+        max_crawl_pages_per_step=budget.max_crawl_pages_per_step,
+        max_tokens_budget=budget.max_tokens,
+        search_depth=budget.search_depth,
+        planner_model=Config.PLANNER_MODEL,
+        researcher_model=Config.RESEARCHER_MODEL,
+        reporter_model=reporter_model,
+        pricing_version=PRICING_VERSION,
     )
 
     clarification_questions = _build_clarification_questions(req.topic)
@@ -73,15 +90,7 @@ async def create_research_task(
             status="clarifying",
             clarification_json=json.dumps(clarification_questions, ensure_ascii=False),
         )
-        return ResearchTaskResponse(
-            task_id=task["task_id"],
-            topic=task["topic"],
-            locale=task["locale"],
-            status=task["status"],
-            clarification_questions=clarification_questions,
-            created_at=task["created_at"],
-            updated_at=task["updated_at"],
-        )
+        return _task_response(task)
 
     # 先生成研究计划，等待用户确认后再跑研究链路
     enqueue_job(
@@ -91,15 +100,12 @@ async def create_research_task(
         payload={"topic": req.topic, "locale": req.locale, "max_steps": max_steps},
     )
 
-    return ResearchTaskResponse(
-        task_id=task["task_id"],
-        topic=task["topic"],
-        locale=task["locale"],
-        status=task["status"],
-        clarification_questions=[],
-        created_at=task["created_at"],
-        updated_at=task["updated_at"],
-    )
+    return _task_response(task)
+
+
+@router.get("/usage-summary", response_model=UsageSummary)
+async def usage_summary(user: dict = Depends(require_login)):
+    return UsageSummary.model_validate(get_usage_summary(user["user_id"]))
 
 
 @router.get("/{task_id}", response_model=ResearchTaskResponse)
@@ -144,17 +150,7 @@ async def answer_clarifications(
         },
     )
 
-    return ResearchTaskResponse(
-        task_id=task["task_id"],
-        topic=task["topic"],
-        locale=task["locale"],
-        status=task["status"],
-        current_step=task["current_step"] or 0,
-        total_steps=task["total_steps"] or 0,
-        clarification_questions=[],
-        created_at=task["created_at"],
-        updated_at=task["updated_at"],
-    )
+    return _task_response(task)
 
 
 @router.get("/{task_id}/agent-runs", response_model=list[AgentRunResponse])
@@ -189,6 +185,12 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depen
         import json
         from cli.models import ResearchPlan, ResearchStep
 
+        budget = budget_from_task(task)
+        if len(req.modified_steps) > budget.max_steps:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{budget.profile} 预算最多允许 {budget.max_steps} 个研究步骤",
+            )
         plan = ResearchPlan.model_validate_json(task["plan_json"])
         plan.steps = [ResearchStep.model_validate(step) for step in req.modified_steps]
         update_task(
@@ -256,6 +258,13 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         min(95.0, current_step / total_steps * 100) if total_steps else 0.0
     )
     plan = json.loads(task["plan_json"]) if task.get("plan_json") else None
+    budget = budget_from_task(task)
+    total_tokens = int(task.get("tokens_used") or 0)
+    budget_percent = (
+        min(100.0, total_tokens / budget.max_tokens * 100)
+        if budget.max_tokens > 0
+        else 0.0
+    )
     return ResearchTaskResponse(
         task_id=task["task_id"],
         topic=task["topic"],
@@ -272,6 +281,21 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         error_message=task.get("error_message") or "",
         last_event_seq=get_last_event_sequence(task["task_id"]),
         plan=plan,
+        budget=budget.model_dump(),
+        usage={
+            "prompt_tokens": int(task.get("prompt_tokens") or 0),
+            "completion_tokens": int(task.get("completion_tokens") or 0),
+            "total_tokens": total_tokens,
+            "estimated_cost_rmb": float(task.get("cost_rmb") or 0.0),
+            "search_calls": int(task.get("search_calls") or 0),
+            "crawl_calls": int(task.get("crawl_calls") or 0),
+            "search_credits": int(task.get("search_credits") or 0),
+            "planner_model": task.get("planner_model") or Config.PLANNER_MODEL,
+            "researcher_model": task.get("researcher_model") or Config.RESEARCHER_MODEL,
+            "reporter_model": task.get("reporter_model") or Config.REPORTER_MODEL,
+            "pricing_version": task.get("pricing_version") or PRICING_VERSION,
+        },
+        budget_percent=round(budget_percent, 1),
         created_at=task["created_at"],
         updated_at=task["updated_at"],
     )

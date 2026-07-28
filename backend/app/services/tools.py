@@ -147,15 +147,18 @@ async def _test_web_search(input_data: dict[str, Any], _user: dict) -> dict[str,
     if recency_days is not None:
         recency_days = _bounded_int(recency_days, default=30, minimum=1, maximum=3650)
 
-    results = await web_search(
+    batch = await web_search(
         query=query,
         max_results=max_results,
         include_domains=[str(item) for item in include_domains],
         recency_days=recency_days,
     )
+    results = batch.results
     summary = "\n".join(f"- {item.title}: {item.url}" for item in results[:max_results])
     return {
-        "input_summary": f"query={query}; max_results={max_results}",
+        "input_summary": (
+            f"query={query}; max_results={max_results}; credits={batch.credits}"
+        ),
         "output_summary": summary or "No search results returned. Check search provider configuration.",
         "raw_output": [item.model_dump() for item in results],
     }

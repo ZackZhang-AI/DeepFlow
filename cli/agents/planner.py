@@ -1,7 +1,7 @@
 """
 Planner Agent — 接收研究主题，生成结构化研究计划
 
-模型: DeepSeek V4-Pro (deepseek-chat)
+模型: DeepSeek V4-Flash
 温度: 0.1 (需要稳定的 JSON 输出)
 """
 
@@ -21,6 +21,7 @@ async def generate_plan(
     locale: str = "zh-CN",
     max_steps: int = 5,
     context: str = "",
+    model_override: str | None = None,
 ) -> tuple[ResearchPlan, int, int]:
     """
     生成研究计划。
@@ -45,7 +46,7 @@ async def generate_plan(
 请分析以上研究主题，生成一个包含 {max_steps} 步以内的研究计划。"""
 
     result, raw, prompt_tokens, completion_tokens = await LLMProvider.generate_json(
-        model=Config.PLANNER_MODEL,
+        model=model_override or Config.PLANNER_MODEL,
         system_prompt=system_prompt,
         user_message=user_message,
         response_model=ResearchPlan,

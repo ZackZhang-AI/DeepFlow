@@ -68,6 +68,9 @@ def init_db() -> None:
             sources_count INTEGER DEFAULT 0,
             search_calls INTEGER DEFAULT 0,
             crawl_calls INTEGER DEFAULT 0,
+            search_credits INTEGER DEFAULT 0,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
             tokens_used INTEGER DEFAULT 0,
             cost_rmb REAL DEFAULT 0.0,
             elapsed_seconds REAL DEFAULT 0.0,
@@ -75,7 +78,16 @@ def init_db() -> None:
             clarification_json TEXT DEFAULT '[]',
             search_domains_json TEXT DEFAULT '[]',
             recency_days INTEGER,
-            max_steps INTEGER DEFAULT 5,
+            budget_profile TEXT DEFAULT 'fast',
+            max_steps INTEGER DEFAULT 3,
+            max_search_calls_per_step INTEGER DEFAULT 1,
+            max_crawl_pages_per_step INTEGER DEFAULT 1,
+            max_tokens_budget INTEGER DEFAULT 20000,
+            search_depth TEXT DEFAULT 'basic',
+            planner_model TEXT DEFAULT 'deepseek-v4-flash',
+            researcher_model TEXT DEFAULT 'deepseek-v4-flash',
+            reporter_model TEXT DEFAULT 'deepseek-v4-flash',
+            pricing_version TEXT DEFAULT '',
             attempt_count INTEGER DEFAULT 0,
             error_code TEXT DEFAULT '',
             error_message TEXT DEFAULT '',
@@ -338,6 +350,18 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "last_heartbeat_at", "TEXT")
     _ensure_column(conn, "research_tasks", "failed_phase", "TEXT DEFAULT ''")
     _ensure_column(conn, "research_tasks", "max_steps", "INTEGER DEFAULT 5")
+    _ensure_column(conn, "research_tasks", "budget_profile", "TEXT DEFAULT 'fast'")
+    _ensure_column(conn, "research_tasks", "max_search_calls_per_step", "INTEGER DEFAULT 1")
+    _ensure_column(conn, "research_tasks", "max_crawl_pages_per_step", "INTEGER DEFAULT 1")
+    _ensure_column(conn, "research_tasks", "max_tokens_budget", "INTEGER DEFAULT 20000")
+    _ensure_column(conn, "research_tasks", "search_depth", "TEXT DEFAULT 'basic'")
+    _ensure_column(conn, "research_tasks", "search_credits", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "prompt_tokens", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "completion_tokens", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "planner_model", "TEXT DEFAULT 'deepseek-v4-flash'")
+    _ensure_column(conn, "research_tasks", "researcher_model", "TEXT DEFAULT 'deepseek-v4-flash'")
+    _ensure_column(conn, "research_tasks", "reporter_model", "TEXT DEFAULT 'deepseek-v4-flash'")
+    _ensure_column(conn, "research_tasks", "pricing_version", "TEXT DEFAULT ''")
     _ensure_column(conn, "knowledge_documents", "workspace_id", "TEXT")
     _ensure_column(conn, "knowledge_documents", "project_id", "TEXT")
     _ensure_column(conn, "artifacts", "workspace_id", "TEXT")
@@ -347,6 +371,31 @@ def init_db() -> None:
     _ensure_column(conn, "shared_links", "expires_at", "TEXT")
     _ensure_column(conn, "shared_links", "revoked_at", "TEXT")
     _ensure_column(conn, "shared_links", "workspace_id", "TEXT")
+    conn.execute(
+        """UPDATE research_tasks
+           SET budget_profile = CASE
+                   WHEN max_steps <= 3 THEN 'fast'
+                   WHEN max_steps <= 5 THEN 'standard'
+                   ELSE 'deep'
+               END,
+               max_search_calls_per_step = CASE
+                   WHEN max_steps <= 3 THEN 1
+                   WHEN max_steps <= 5 THEN 2
+                   ELSE 3
+               END,
+               max_crawl_pages_per_step = CASE
+                   WHEN max_steps <= 3 THEN 1
+                   WHEN max_steps <= 5 THEN 2
+                   ELSE 3
+               END,
+               max_tokens_budget = CASE
+                   WHEN max_steps <= 3 THEN 20000
+                   WHEN max_steps <= 5 THEN 40000
+                   ELSE 70000
+               END,
+               search_depth = CASE WHEN max_steps > 5 THEN 'advanced' ELSE 'basic' END
+           WHERE pricing_version IS NULL OR pricing_version = ''"""
+    )
     conn.execute(
         """UPDATE artifacts
            SET workspace_id = (

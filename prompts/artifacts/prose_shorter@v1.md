@@ -1,7 +1,7 @@
 ---
 agent: prose_shorter
 version: 1
-model: deepseek-chat or deepseek-chat (V4-Flash)
+model: deepseek-v4-flash
 temperature: 0.2
 max_tokens: 2048
 ---

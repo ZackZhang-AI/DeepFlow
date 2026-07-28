@@ -42,7 +42,7 @@ def demo_credentials() -> tuple[str, str] | None:
 
 
 def sandbox_tool_disabled() -> bool:
-    return env_bool("DISABLE_SANDBOX_TOOL", False)
+    return env_bool("DISABLE_SANDBOX_TOOL", True)
 
 
 def rate_limit_window_seconds() -> int:

@@ -27,13 +27,20 @@ async def generate_report(
     locale: str = "zh-CN",
     report_style: str = "general",
     use_fallback_model: bool = False,
+    model_override: str | None = None,
+    max_output_tokens: int | None = None,
+    max_finding_chars_per_step: int | None = None,
 ) -> tuple[str, int, int]:
     """
     生成最终研究报告，支持 6 种风格。
 
     Styles: general | academic | popular_science | news | social_media | strategic_investment
     """
-    model = Config.REPORTER_FALLBACK_MODEL if use_fallback_model else Config.REPORTER_MODEL
+    model = (
+        Config.REPORTER_FALLBACK_MODEL
+        if use_fallback_model
+        else model_override or Config.REPORTER_MODEL
+    )
 
     # 尝试加载 v2 prompt，失败则用 v1
     try:
@@ -41,11 +48,19 @@ async def generate_report(
     except FileNotFoundError:
         system_prompt = load_prompt("reporter", version=1)
 
-    findings_text = _format_findings(findings)
+    findings_text = _format_findings(findings, max_finding_chars_per_step)
     all_refs = _collect_references(findings)
 
     # 根据风格添加特定指令
     style_instructions = _get_style_instructions(report_style, locale)
+    compact_instructions = ""
+    if max_output_tokens and max_output_tokens <= 2048:
+        compact_instructions = """
+- 快速报告必须简洁，总长度控制在 1200 个汉字以内
+- 不要输出开场白，也不要增加下列结构之外的章节
+- 必须严格按此顺序输出：# 标题、## 结论、## 主要分析、## 来源
+- 结论不超过 300 字；主要分析使用 3-5 个要点；来源至少列出 3 个已有链接
+"""
 
     user_message = f"""## 研究主题
 {plan.title}
@@ -66,19 +81,31 @@ async def generate_report(
 - 所有引用统一放到 Key Citations 部分
 - 如果需要展示对比数据，优先使用 Markdown 表格
 {style_instructions}"""
+    user_message += compact_instructions
 
+    output_limit = max_output_tokens or (
+        12000 if report_style == "strategic_investment" else 8192
+    )
     response, prompt_tokens, completion_tokens = await LLMProvider.generate_text(
         model=model,
         system_prompt=system_prompt,
         user_message=user_message,
         temperature=0.3 if report_style != "strategic_investment" else 0.2,
-        max_tokens=8192 if report_style != "strategic_investment" else 12000,
+        max_tokens=output_limit,
     )
 
     if (not response or len(response) < 200) and not use_fallback_model \
        and Config.DASHSCOPE_API_KEY and Config.REPORTER_FALLBACK_MODEL != Config.REPORTER_MODEL:
         logger.info("主模型输出过短，尝试备用模型...")
-        return await generate_report(plan, findings, locale, report_style, use_fallback_model=True)
+        return await generate_report(
+            plan,
+            findings,
+            locale,
+            report_style,
+            use_fallback_model=True,
+            max_output_tokens=max_output_tokens,
+            max_finding_chars_per_step=max_finding_chars_per_step,
+        )
 
     allowed_urls = {ref.url for finding in findings for ref in finding.references}
     response = _remove_unrecorded_links(response, allowed_urls)
@@ -132,14 +159,22 @@ def _get_style_instructions(style: str, locale: str) -> str:
     return instructions.get(style, "")
 
 
-def _format_findings(findings: list[ResearchFinding]) -> str:
+def _format_findings(
+    findings: list[ResearchFinding],
+    max_chars_per_step: int | None = None,
+) -> str:
     """格式化为 Reporter 输入"""
     parts = []
     for i, f in enumerate(findings, 1):
+        finding_text = f.findings_markdown
+        conclusion = f.conclusion
+        if max_chars_per_step:
+            finding_text = finding_text[:max_chars_per_step]
+            conclusion = conclusion[: min(300, max_chars_per_step // 3)]
         parts.append(f"### 步骤 {i}: {f.step_title}")
         parts.append(f"研究问题: {f.problem_statement}")
-        parts.append(f"\n{f.findings_markdown}")
-        parts.append(f"\n结论: {f.conclusion}")
+        parts.append(f"\n{finding_text}")
+        parts.append(f"\n结论: {conclusion}")
         parts.append(f"\n引用数: {len(f.references)}")
         parts.append("\n---\n")
     return "\n".join(parts)

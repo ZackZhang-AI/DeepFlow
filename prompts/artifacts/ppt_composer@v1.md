@@ -1,7 +1,7 @@
 ---
 agent: ppt_composer
 version: 1
-model: deepseek-chat
+model: deepseek-v4-pro
 temperature: 0.2
 max_tokens: 4096
 ---

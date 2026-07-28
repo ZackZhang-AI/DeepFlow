@@ -13,6 +13,7 @@ from backend.app.core.auth import require_login
 from backend.app.repositories.research import create_task, update_task
 from backend.app.core.readiness import require_research_providers
 from backend.app.repositories import template as template_repository
+from cli.budget import get_budget
 from cli.models import ResearchPlan, ResearchStep, StepType
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -82,6 +83,7 @@ async def start_research_from_template(
     domains = json.loads(template.get("recommended_domains_json") or "[]")
     task = create_task(task_id, req.topic, req.locale, search_domains=domains, user_id=user["user_id"])
     plan_structure = json.loads(template.get("plan_structure_json") or "[]")
+    plan_structure = plan_structure[: get_budget("fast").max_steps]
     questions = json.loads(template.get("clarification_questions_json") or "[]")
     plan = (
         _build_template_plan(

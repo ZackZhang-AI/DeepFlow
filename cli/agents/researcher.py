@@ -1,7 +1,7 @@
 """
 Researcher Agent — 执行单个研究步骤，搜索、抓取、总结
 
-模型: DeepSeek V4-Pro (deepseek-chat)
+模型: DeepSeek V4-Flash
 核心约束:
   1. 所有事实必须来自工具返回结果
   2. 引用 URL 必须出现在搜索结果中
@@ -29,6 +29,12 @@ async def research_step(
     local_references: list[SourceReference] | None = None,
     search_domains: list[str] | None = None,
     recency_days: int | None = None,
+    max_search_calls: int | None = None,
+    max_crawl_pages: int | None = None,
+    search_depth: str = "basic",
+    token_budget_remaining: int | None = None,
+    model_override: str | None = None,
+    max_summary_tokens: int = 4096,
 ) -> tuple[ResearchFinding, int, int]:
     """
     执行单个研究步骤。
@@ -63,8 +69,9 @@ async def research_step(
 
 请生成搜索查询（每行一个）："""
 
+    _require_token_capacity(token_budget_remaining, 512)
     queries_text, pq, cq = await LLMProvider.generate_text(
-        model=Config.RESEARCHER_MODEL,
+        model=model_override or Config.RESEARCHER_MODEL,
         system_prompt=query_system,
         user_message=query_user,
         temperature=0.3,
@@ -75,7 +82,8 @@ async def research_step(
 
     # 解析查询
     queries = [q.strip() for q in queries_text.split("\n") if q.strip()]
-    queries = queries[: Config.MAX_SEARCH_CALLS]  # 限制数量
+    search_limit = max_search_calls or Config.MAX_SEARCH_CALLS
+    queries = queries[:search_limit]
 
     if not queries:
         queries = [step.title]
@@ -85,19 +93,22 @@ async def research_step(
     local_references = local_references or []
 
     # ---- Step 2: 执行搜索 ----
-    search_results = await web_search_multi(
+    search_batch = await web_search_multi(
         queries,
         max_results_per_query=5,
         include_domains=search_domains,
         recency_days=recency_days,
+        search_depth=search_depth,
     )
+    search_results = search_batch.results
     logger.info(f"  搜索返回 {len(search_results)} 条结果")
 
     if not search_results and not local_references:
         raise RuntimeError("No search results were returned by the configured providers")
 
     # ---- Step 3: 深度抓取 (前 N 个结果) ----
-    urls_to_crawl = [r.url for r in search_results[: Config.MAX_CRAWL_PAGES]]
+    crawl_limit = max_crawl_pages or Config.MAX_CRAWL_PAGES
+    urls_to_crawl = [r.url for r in search_results[:crawl_limit]]
     crawl_results = await crawl_urls(urls_to_crawl) if urls_to_crawl else []
     successful_crawls = [c for c in crawl_results if c.success]
     logger.info(f"  成功抓取 {len(successful_crawls)}/{len(urls_to_crawl)} 个页面")
@@ -137,12 +148,18 @@ async def research_step(
 5. 输出语言：{"中文" if locale == "zh-CN" else "English"}
 6. 当前日期：{datetime.now().strftime("%Y-%m-%d")}"""
 
+    remaining_after_query = (
+        None
+        if token_budget_remaining is None
+        else token_budget_remaining - total_prompt - total_completion
+    )
+    _require_token_capacity(remaining_after_query, max_summary_tokens)
     response, pr, cr = await LLMProvider.generate_text(
-        model=Config.RESEARCHER_MODEL,
+        model=model_override or Config.RESEARCHER_MODEL,
         system_prompt=system_prompt,
         user_message=user_message,
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=max_summary_tokens,
     )
     total_prompt += pr
     total_completion += cr
@@ -156,6 +173,7 @@ async def research_step(
         crawl_results=successful_crawls,
         search_calls=len(queries),
         crawl_calls=len(urls_to_crawl),
+        search_credits=search_batch.credits,
         local_references=local_references,
     )
 
@@ -208,6 +226,7 @@ def _parse_researcher_output(
     crawl_results: list,
     search_calls: int,
     crawl_calls: int,
+    search_credits: int,
     local_references: list[SourceReference] | None = None,
 ) -> ResearchFinding:
     """从 LLM 原始输出中解析 ResearchFinding，并验证引用"""
@@ -286,7 +305,16 @@ def _parse_researcher_output(
         references=references,
         search_calls=search_calls,
         crawl_calls=crawl_calls,
+        search_credits=search_credits,
     )
+
+
+def _require_token_capacity(remaining: int | None, requested_output_tokens: int) -> None:
+    if remaining is not None and remaining < requested_output_tokens:
+        raise RuntimeError(
+            f"Token budget exceeded before provider call: "
+            f"remaining={remaining}, required={requested_output_tokens}"
+        )
 
 
 def _find_source(

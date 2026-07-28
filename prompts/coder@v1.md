@@ -1,7 +1,7 @@
 ---
 agent: coder
 version: 1
-model: deepseek-chat (DeepSeek V4-Pro)
+model: deepseek-v4-pro
 temperature: 0.1
 max_tokens: 4096
 ---

@@ -1,7 +1,7 @@
 ---
 agent: prose_improver
 version: 1
-model: deepseek-chat
+model: deepseek-v4-pro
 temperature: 0.3
 max_tokens: 2048
 ---

@@ -1,7 +1,7 @@
 ---
 agent: reporter
 version: 1
-model: deepseek-chat (DeepSeek V4-Pro) or qwen-max (Qwen3.7-Max)
+model: deepseek-v4-pro or qwen-max
 temperature: 0.3
 max_tokens: 8192
 ---

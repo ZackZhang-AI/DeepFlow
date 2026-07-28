@@ -1,7 +1,7 @@
 ---
 agent: planner
 version: 1
-model: deepseek-chat (DeepSeek V4-Pro)
+model: deepseek-v4-flash
 temperature: 0.1
 max_tokens: 2048
 ---

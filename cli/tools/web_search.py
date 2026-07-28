@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from typing import Optional
 
 from cli.config import Config
-from cli.models import SearchResult
+from cli.models import SearchBatch, SearchResult
 
 logger = logging.getLogger(__name__)
 _PLACEHOLDER_MARKERS = ("your-", "your_", "replace", "changeme", "example")
@@ -25,7 +25,8 @@ async def web_search(
     include_raw_content: bool = False,
     include_domains: list[str] | None = None,
     recency_days: int | None = None,
-) -> list[SearchResult]:
+    search_depth: str = "basic",
+) -> SearchBatch:
     """
     执行一次搜索，自动降级。
 
@@ -35,24 +36,31 @@ async def web_search(
     query = _apply_search_constraints(query, include_domains, recency_days)
     if _usable_key(Config.TAVILY_API_KEY):
         try:
+            batch = await _tavily_search(
+                query,
+                max_results,
+                include_raw_content,
+                search_depth=search_depth,
+            )
             results = _filter_domains(
-                await _tavily_search(query, max_results, include_raw_content),
+                batch.results,
                 include_domains,
             )
             if results:
-                return results
+                return SearchBatch(results=results, credits=batch.credits, provider=batch.provider)
             logger.warning("Tavily returned no results; trying SerpAPI")
         except Exception as e:
             logger.warning(f"Tavily 搜索失败: {e}，尝试降级到 SerpAPI")
 
     if _usable_key(Config.SERPAPI_API_KEY):
         try:
-            return _filter_domains(await _serpapi_search(query, max_results), include_domains)
+            results = _filter_domains(await _serpapi_search(query, max_results), include_domains)
+            return SearchBatch(results=results, credits=0, provider="serpapi")
         except Exception as e:
             logger.error(f"SerpAPI 搜索也失败: {e}")
 
     logger.error(f"所有搜索源不可用，query='{query}'")
-    return []
+    return SearchBatch()
 
 
 async def web_search_multi(
@@ -60,7 +68,8 @@ async def web_search_multi(
     max_results_per_query: int = 5,
     include_domains: list[str] | None = None,
     recency_days: int | None = None,
-) -> list[SearchResult]:
+    search_depth: str = "basic",
+) -> SearchBatch:
     """
     对多个搜索词并行搜索，去重合并结果。
     """
@@ -72,6 +81,7 @@ async def web_search_multi(
             max_results=max_results_per_query,
             include_domains=include_domains,
             recency_days=recency_days,
+            search_depth=search_depth,
         )
         for q in queries
     ]
@@ -79,16 +89,25 @@ async def web_search_multi(
 
     seen_urls: set[str] = set()
     merged: list[SearchResult] = []
+    credits = 0
+    providers: set[str] = set()
 
-    for results in results_per_query:
-        if isinstance(results, Exception):
+    for batch in results_per_query:
+        if isinstance(batch, Exception):
             continue
-        for r in results:
+        credits += batch.credits
+        if batch.provider:
+            providers.add(batch.provider)
+        for r in batch.results:
             if r.url not in seen_urls:
                 seen_urls.add(r.url)
                 merged.append(r)
 
-    return merged
+    return SearchBatch(
+        results=merged,
+        credits=credits,
+        provider=",".join(sorted(providers)),
+    )
 
 
 def _apply_search_constraints(
@@ -123,7 +142,8 @@ async def _tavily_search(
     query: str,
     max_results: int = 8,
     include_raw_content: bool = False,
-) -> list[SearchResult]:
+    search_depth: str = "basic",
+) -> SearchBatch:
     """
     Tavily Search API
     https://docs.tavily.com/docs/api-reference/endpoint/search
@@ -137,7 +157,8 @@ async def _tavily_search(
         query=query,
         max_results=max_results,
         include_raw_content=include_raw_content,
-        search_depth="advanced",
+        search_depth=search_depth,
+        include_usage=True,
     )
 
     results: list[SearchResult] = []
@@ -151,7 +172,11 @@ async def _tavily_search(
                 source="tavily",
             )
         )
-    return results
+    return SearchBatch(
+        results=results,
+        credits=int((response.get("usage") or {}).get("credits") or 0),
+        provider="tavily",
+    )
 
 
 async def _serpapi_search(

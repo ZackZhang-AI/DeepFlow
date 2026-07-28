@@ -65,6 +65,7 @@ def test_sandbox_tool_test_endpoint_can_be_disabled(monkeypatch, tmp_path):
 def test_tool_test_rate_limit_returns_429(monkeypatch, tmp_path):
     db.DB_PATH = tmp_path / "deepflow_rate_limit.db"
     reset_rate_limits()
+    monkeypatch.setenv("DISABLE_SANDBOX_TOOL", "false")
     monkeypatch.setenv("TOOL_TEST_RATE_LIMIT_PER_HOUR", "1")
     monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "3600")
 

@@ -26,10 +26,13 @@ class Config:
     SERPAPI_API_KEY: str = os.getenv("SERPAPI_API_KEY", "")
 
     # ---- 模型分配 ----
-    PLANNER_MODEL: str = os.getenv("PLANNER_MODEL", "deepseek-chat")
-    RESEARCHER_MODEL: str = os.getenv("RESEARCHER_MODEL", "deepseek-chat")
-    REPORTER_MODEL: str = os.getenv("REPORTER_MODEL", "deepseek-chat")
+    PLANNER_MODEL: str = os.getenv("PLANNER_MODEL", "deepseek-v4-flash")
+    RESEARCHER_MODEL: str = os.getenv("RESEARCHER_MODEL", "deepseek-v4-flash")
+    REPORTER_MODEL: str = os.getenv("REPORTER_MODEL", "deepseek-v4-pro")
     REPORTER_FALLBACK_MODEL: str = os.getenv("REPORTER_FALLBACK_MODEL", "qwen-max")
+    DEEPSEEK_THINKING_ENABLED: bool = os.getenv(
+        "DEEPSEEK_THINKING_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
 
     # ---- 研究参数 ----
     MAX_STEPS: int = int(os.getenv("MAX_STEPS", "5"))

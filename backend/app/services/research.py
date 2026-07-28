@@ -16,6 +16,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 from cli.config import Config
+from cli.budget import budget_from_task
+from cli.pricing import PRICING_VERSION, estimate_cost_rmb
 from cli.models import ResearchPlan, ResearchFinding, SourceReference, SourceType
 from cli.agents.planner import generate_plan
 from cli.agents.researcher import research_step
@@ -48,16 +50,20 @@ async def generate_research_plan_task(
     emitter = get_event_manager(task_id)
     started_at = time.time()
     task = get_task(task_id) or {}
+    budget = budget_from_task(task)
 
     try:
         await emitter.emit("coordinator.started", task_id=task_id)
         update_task(task_id, status="planning")
 
         phase_started = time.time()
+        _ensure_call_capacity(0, 2048, budget.max_tokens)
+        planner_model = task.get("planner_model") or Config.PLANNER_MODEL
         plan, pt, ct = await generate_plan(
             topic=topic,
             locale=locale,
             max_steps=max_steps or Config.MAX_STEPS,
+            model_override=planner_model,
         )
         save_agent_run(
             task_id=task_id,
@@ -70,7 +76,7 @@ async def generate_research_plan_task(
             completion_tokens=ct,
             elapsed_seconds=time.time() - phase_started,
         )
-        _ensure_token_budget(pt + ct)
+        _ensure_token_budget(pt + ct, budget.max_tokens)
 
         plan_dict = plan.model_dump()
         update_task(
@@ -78,8 +84,11 @@ async def generate_research_plan_task(
             status="awaiting_confirmation",
             plan_json=json.dumps(plan_dict, ensure_ascii=False),
             total_steps=len(plan.steps),
+            prompt_tokens=pt,
+            completion_tokens=ct,
             tokens_used=pt + ct,
-            cost_rmb=_estimate_cost(pt, ct),
+            cost_rmb=estimate_cost_rmb(planner_model, pt, ct),
+            pricing_version=task.get("pricing_version") or PRICING_VERSION,
             elapsed_seconds=time.time() - started_at,
         )
 
@@ -117,6 +126,7 @@ async def execute_research_task(task_id: str):
     total_completion = 0
     total_search_calls = 0
     total_crawl_calls = 0
+    total_search_credits = 0
     started_at = time.time()
     task: dict = {}
 
@@ -132,8 +142,28 @@ async def execute_research_task(task_id: str):
         search_domains = json.loads(task.get("search_domains_json") or "[]")
         recency_days = task.get("recency_days")
         existing_tokens = int(task.get("tokens_used") or 0)
+        existing_prompt = int(task.get("prompt_tokens") or 0)
+        existing_completion = int(task.get("completion_tokens") or 0)
         existing_cost = float(task.get("cost_rmb") or 0.0)
-        _ensure_token_budget(existing_tokens)
+        existing_search_calls = int(task.get("search_calls") or 0)
+        existing_crawl_calls = int(task.get("crawl_calls") or 0)
+        existing_search_credits = int(task.get("search_credits") or 0)
+        budget = budget_from_task(task)
+        if len(plan.steps) > budget.max_steps:
+            plan.steps = plan.steps[: budget.max_steps]
+            update_task(
+                task_id,
+                plan_json=json.dumps(plan.model_dump(), ensure_ascii=False),
+                total_steps=len(plan.steps),
+            )
+        researcher_model = task.get("researcher_model") or Config.RESEARCHER_MODEL
+        reporter_model = task.get("reporter_model") or Config.REPORTER_MODEL
+        researcher_output_limit = {
+            "fast": 2048,
+            "standard": 3072,
+            "deep": 4096,
+        }.get(budget.profile, 2048)
+        _ensure_token_budget(existing_tokens, budget.max_tokens)
 
         # ---- Phase 1: Researching ----
         update_task(task_id, status="researching")
@@ -193,6 +223,17 @@ async def execute_research_task(task_id: str):
                     local_references=local_refs,
                     search_domains=search_domains,
                     recency_days=recency_days,
+                    max_search_calls=budget.max_search_calls_per_step,
+                    max_crawl_pages=budget.max_crawl_pages_per_step,
+                    search_depth=budget.search_depth,
+                    token_budget_remaining=(
+                        budget.max_tokens
+                        - existing_tokens
+                        - total_prompt
+                        - total_completion
+                    ),
+                    model_override=researcher_model,
+                    max_summary_tokens=researcher_output_limit,
                 )
             else:
                 phase_started = time.time()
@@ -220,11 +261,15 @@ async def execute_research_task(task_id: str):
             )
             total_prompt += pt
             total_completion += ct
-            _ensure_token_budget(existing_tokens + total_prompt + total_completion)
+            _ensure_token_budget(
+                existing_tokens + total_prompt + total_completion,
+                budget.max_tokens,
+            )
             findings.append(finding)
             total_sources += len(finding.references)
             total_search_calls += finding.search_calls
             total_crawl_calls += finding.crawl_calls
+            total_search_credits += finding.search_credits
 
             # 更新步骤
             step_id = f"{task_id}_step_{step_num}"
@@ -234,6 +279,25 @@ async def execute_research_task(task_id: str):
                 findings_markdown=finding.findings_markdown,
                 conclusion=finding.conclusion,
                 sources_json=[r.model_dump() for r in finding.references],
+            )
+            current_prompt = existing_prompt + total_prompt
+            current_completion = existing_completion + total_completion
+            current_tokens = existing_tokens + total_prompt + total_completion
+            update_task(
+                task_id,
+                prompt_tokens=current_prompt,
+                completion_tokens=current_completion,
+                tokens_used=current_tokens,
+                cost_rmb=existing_cost
+                + estimate_cost_rmb(
+                    researcher_model,
+                    total_prompt,
+                    total_completion,
+                ),
+                search_calls=existing_search_calls + total_search_calls,
+                crawl_calls=existing_crawl_calls + total_crawl_calls,
+                search_credits=existing_search_credits + total_search_credits,
+                elapsed_seconds=time.time() - started_at,
             )
 
             await emitter.emit(
@@ -248,13 +312,35 @@ async def execute_research_task(task_id: str):
             raise RuntimeError("所有研究步骤均未产生有效发现")
 
         # ---- Phase 3: Reporting ----
-        _ensure_token_budget(existing_tokens + total_prompt + total_completion)
+        _ensure_token_budget(
+            existing_tokens + total_prompt + total_completion,
+            budget.max_tokens,
+        )
+        if budget.profile == "fast":
+            report_output_limit = 1536
+            finding_context_limit = 800
+        elif budget.profile == "standard":
+            report_output_limit = 4096
+            finding_context_limit = 1600
+        else:
+            report_output_limit = 8192
+            finding_context_limit = None
+        _ensure_call_capacity(
+            existing_tokens + total_prompt + total_completion,
+            report_output_limit,
+            budget.max_tokens,
+        )
         update_task(task_id, status="generating_report", failed_phase="")
         await emitter.emit("report.started")
 
         phase_started = time.time()
         report, pt, ct = await generate_report(
-            plan=plan, findings=findings, locale=locale
+            plan=plan,
+            findings=findings,
+            locale=locale,
+            model_override=reporter_model,
+            max_output_tokens=report_output_limit,
+            max_finding_chars_per_step=finding_context_limit,
         )
         save_agent_run(
             task_id=task_id,
@@ -269,11 +355,24 @@ async def execute_research_task(task_id: str):
         )
         total_prompt += pt
         total_completion += ct
-        _ensure_token_budget(existing_tokens + total_prompt + total_completion)
+        _ensure_token_budget(
+            existing_tokens + total_prompt + total_completion,
+            budget.max_tokens,
+        )
 
         # ---- Done ----
         total_tokens = existing_tokens + total_prompt + total_completion
-        total_cost = existing_cost + _estimate_cost(total_prompt, total_completion)
+        research_prompt = total_prompt - pt
+        research_completion = total_completion - ct
+        total_cost = (
+            existing_cost
+            + estimate_cost_rmb(
+                researcher_model,
+                research_prompt,
+                research_completion,
+            )
+            + estimate_cost_rmb(reporter_model, pt, ct)
+        )
         now = datetime.now().isoformat()
 
         update_task(
@@ -281,8 +380,11 @@ async def execute_research_task(task_id: str):
             status="completed",
             report_markdown=report,
             sources_count=total_sources,
-            search_calls=total_search_calls,
-            crawl_calls=total_crawl_calls,
+            search_calls=existing_search_calls + total_search_calls,
+            crawl_calls=existing_crawl_calls + total_crawl_calls,
+            search_credits=existing_search_credits + total_search_credits,
+            prompt_tokens=existing_prompt + total_prompt,
+            completion_tokens=existing_completion + total_completion,
             tokens_used=total_tokens,
             cost_rmb=total_cost,
             elapsed_seconds=time.time() - started_at,
@@ -315,20 +417,25 @@ async def execute_research_task(task_id: str):
         remove_event_manager(task_id)
 
 
-def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float:
-    """估算费用（DeepSeek V4-Pro 定价）"""
-    # V4-Pro: 输入 ¥3/百万, 输出 ¥6/百万
-    prompt_cost = prompt_tokens / 1_000_000 * 3
-    completion_cost = completion_tokens / 1_000_000 * 6
-    return round(prompt_cost + completion_cost, 4)
-
-
-def _ensure_token_budget(total_tokens: int) -> None:
+def _ensure_token_budget(total_tokens: int, max_tokens: int) -> None:
     """超过配置预算时中断任务。"""
-    if Config.MAX_TOKEN_BUDGET <= 0:
+    if max_tokens <= 0:
         return
-    if total_tokens > Config.MAX_TOKEN_BUDGET:
-        raise RuntimeError(f"Token 预算超限: {total_tokens} > {Config.MAX_TOKEN_BUDGET}")
+    if total_tokens > max_tokens:
+        raise RuntimeError(f"Token budget exceeded: {total_tokens} > {max_tokens}")
+
+
+def _ensure_call_capacity(
+    current_tokens: int,
+    requested_output_tokens: int,
+    max_tokens: int,
+) -> None:
+    if max_tokens > 0 and current_tokens + requested_output_tokens > max_tokens:
+        raise RuntimeError(
+            "Token budget exceeded before provider call: "
+            f"current={current_tokens}, requested={requested_output_tokens}, "
+            f"limit={max_tokens}"
+        )
 
 
 def _build_research_tool_calls(finding: ResearchFinding, knowledge_hits: int) -> list[dict]:

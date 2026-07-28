@@ -71,6 +71,7 @@ class ResearchFinding(BaseModel):
     references: list[SourceReference] = Field(default_factory=list, description="引用来源")
     search_calls: int = Field(default=0, description="本步骤搜索调用次数")
     crawl_calls: int = Field(default=0, description="本步骤网页抓取次数")
+    search_credits: int = Field(default=0, description="本步骤搜索 Provider credits")
 
 
 # ============================================================
@@ -84,6 +85,13 @@ class SearchResult(BaseModel):
     snippet: str
     published_at: Optional[str] = None
     source: str = "tavily"  # tavily | serpapi
+
+
+class SearchBatch(BaseModel):
+    """搜索结果及 Provider 实际用量。"""
+    results: list[SearchResult] = Field(default_factory=list)
+    credits: int = 0
+    provider: str = ""
 
 
 class CrawlResult(BaseModel):
@@ -108,6 +116,7 @@ class UsageStats(BaseModel):
     total_tokens: int = 0
     search_calls: int = 0
     crawl_calls: int = 0
+    search_credits: int = 0
     cost_estimate_rmb: float = 0.0
     elapsed_seconds: float = 0.0
     retries: int = 0

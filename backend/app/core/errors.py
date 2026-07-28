@@ -62,6 +62,16 @@ def classify_failure(exc: BaseException) -> Failure:
     message = str(exc).strip() or exc.__class__.__name__
     text = message.lower()
 
+    if any(
+        token in text
+        for token in ("402", "insufficient balance", "payment required", "余额不足")
+    ):
+        return Failure("provider_balance_exhausted", message, False)
+    if any(
+        token in text
+        for token in ("search credits", "tavily credits", "credit balance exhausted")
+    ):
+        return Failure("search_credits_exhausted", message, False)
     if any(token in text for token in ("401", "403", "unauthorized", "forbidden", "api key")):
         return Failure("provider_auth", message, False)
     if any(token in text for token in ("budget", "token budget", "quota exceeded")):

@@ -130,6 +130,7 @@ def test_auth_knowledge_report_and_artifact_smoke(monkeypatch, tmp_path):
 
 def test_prd_extension_smoke(monkeypatch, tmp_path):
     db.DB_PATH = tmp_path / "deepflow_prd_extensions.db"
+    monkeypatch.setenv("DISABLE_SANDBOX_TOOL", "false")
     monkeypatch.setattr(knowledge_service, "get_embedding_service", lambda: FakeEmbeddingService())
     monkeypatch.setattr(knowledge_service, "get_rerank_service", lambda: FakeRerankService())
 
