@@ -130,18 +130,40 @@ TAVILY_API_KEY=tvly-...
 python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+后端服务与接口文档：
+
+| 服务 | 地址 |
+| --- | --- |
+| API | `http://localhost:8000` |
+| Swagger | `http://localhost:8000/docs` |
+| 健康检查 | `http://localhost:8000/api/health` |
+| Provider 就绪检查 | `http://localhost:8000/api/system/readiness` |
+
 ### 4. 启动前端
 
 ```bash
 cd frontend
-npm run dev
+npm run dev -- --port 3001
 ```
 
 浏览器打开：
 
 ```text
-http://localhost:3000
+http://localhost:3001
 ```
+
+当前项目固定使用 `3001`，避免与其他 DeepFlow 工作目录占用的 `3000` 端口混淆。若使用其他端口，请同步将其加入 `.env` 的 `CORS_ORIGINS`。
+
+### 5. 默认本地账号
+
+首次启动后端时，系统会根据 `.env` 自动创建本地演示账号：
+
+```text
+账号：deepflow
+密码：DeepFlow2026!
+```
+
+该账号只用于本地开发和功能演示。公开部署前必须修改 `DEMO_USERNAME`、`DEMO_PASSWORD`，并建议设置 `ALLOW_PUBLIC_REGISTRATION=false`。演示账号只在首次不存在时创建；修改密码后如需更新已有账号，请重新注册新账号或清理本地演示数据库。
 
 ## 主要页面
 
