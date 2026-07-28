@@ -82,7 +82,7 @@ def init_db() -> None:
             max_steps INTEGER DEFAULT 3,
             max_search_calls_per_step INTEGER DEFAULT 1,
             max_crawl_pages_per_step INTEGER DEFAULT 1,
-            max_tokens_budget INTEGER DEFAULT 20000,
+            max_tokens_budget INTEGER DEFAULT 30000,
             search_depth TEXT DEFAULT 'basic',
             planner_model TEXT DEFAULT 'deepseek-v4-flash',
             researcher_model TEXT DEFAULT 'deepseek-v4-flash',
@@ -353,7 +353,7 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "budget_profile", "TEXT DEFAULT 'fast'")
     _ensure_column(conn, "research_tasks", "max_search_calls_per_step", "INTEGER DEFAULT 1")
     _ensure_column(conn, "research_tasks", "max_crawl_pages_per_step", "INTEGER DEFAULT 1")
-    _ensure_column(conn, "research_tasks", "max_tokens_budget", "INTEGER DEFAULT 20000")
+    _ensure_column(conn, "research_tasks", "max_tokens_budget", "INTEGER DEFAULT 30000")
     _ensure_column(conn, "research_tasks", "search_depth", "TEXT DEFAULT 'basic'")
     _ensure_column(conn, "research_tasks", "search_credits", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "prompt_tokens", "INTEGER DEFAULT 0")
@@ -389,12 +389,28 @@ def init_db() -> None:
                    ELSE 3
                END,
                max_tokens_budget = CASE
-                   WHEN max_steps <= 3 THEN 20000
-                   WHEN max_steps <= 5 THEN 40000
-                   ELSE 70000
+                   WHEN max_steps <= 3 THEN 30000
+                   WHEN max_steps <= 5 THEN 60000
+                   ELSE 100000
                END,
                search_depth = CASE WHEN max_steps > 5 THEN 'advanced' ELSE 'basic' END
            WHERE pricing_version IS NULL OR pricing_version = ''"""
+    )
+    conn.execute(
+        """UPDATE research_tasks
+           SET max_tokens_budget = CASE budget_profile
+                   WHEN 'fast' THEN 30000
+                   WHEN 'standard' THEN 60000
+                   WHEN 'deep' THEN 100000
+                   ELSE max_tokens_budget
+               END,
+               retryable = CASE
+                   WHEN status = 'failed' AND error_code = 'budget_exceeded' THEN 1
+                   ELSE retryable
+               END
+           WHERE (budget_profile = 'fast' AND max_tokens_budget = 20000)
+              OR (budget_profile = 'standard' AND max_tokens_budget = 40000)
+              OR (budget_profile = 'deep' AND max_tokens_budget = 70000)"""
     )
     conn.execute(
         """UPDATE artifacts

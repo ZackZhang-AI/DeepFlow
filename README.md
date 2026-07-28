@@ -97,9 +97,9 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 | 档位 | 步骤 | 每步搜索 | 每步抓取 | Token 上限 | Tavily |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 快速 | 3 | 1 | 1 | 20,000 | basic |
-| 标准 | 5 | 2 | 2 | 40,000 | basic |
-| 深度 | 8 | 3 | 3 | 70,000 | advanced |
+| 快速 | 3 | 1 | 1 | 30,000 | basic |
+| 标准 | 5 | 2 | 2 | 60,000 | basic |
+| 深度 | 8 | 3 | 3 | 100,000 | advanced |
 
 - Planner、Researcher 默认使用 `deepseek-v4-flash`。
 - 快速报告使用 Flash，标准/深度报告使用 `deepseek-v4-pro`。

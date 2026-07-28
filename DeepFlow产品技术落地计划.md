@@ -415,9 +415,9 @@ npm.cmd run test:e2e
 
 | 档位 | 步骤 | 每步搜索 | 每步抓取 | Token 上限 | Tavily |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 快速 | 3 | 1 | 1 | 20,000 | basic |
-| 标准 | 5 | 2 | 2 | 40,000 | basic |
-| 深度 | 8 | 3 | 3 | 70,000 | advanced |
+| 快速 | 3 | 1 | 1 | 30,000 | basic |
+| 标准 | 5 | 2 | 2 | 60,000 | basic |
+| 深度 | 8 | 3 | 3 | 100,000 | advanced |
 
 - Planner、Researcher 使用 `deepseek-v4-flash`，快速 Reporter 使用 Flash。
 - 标准/深度 Reporter 使用 `deepseek-v4-pro`。

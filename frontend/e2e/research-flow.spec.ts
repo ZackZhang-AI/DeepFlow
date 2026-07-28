@@ -55,7 +55,7 @@ function task(status: string, errorCode = "provider_timeout") {
       max_steps: 3,
       max_search_calls_per_step: 1,
       max_crawl_pages_per_step: 1,
-      max_tokens: 20000,
+      max_tokens: 30000,
       search_depth: "basic",
     },
     usage: {
@@ -240,7 +240,7 @@ test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ pa
 
   await page.goto("/");
   await expect(page.getByRole("radio", { name: /快速研究/ })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText("预计 ¥0.05–0.30")).toBeVisible();
+  await expect(page.getByText("预计 ¥0.05–0.35")).toBeVisible();
   await expect(page.getByText("模型账户余额不足，请充值后重新检查。")).toBeVisible();
   await page.getByLabel("研究主题").fill("低成本 AI Agent 市场研究");
   const createButton = page.getByRole("button", { name: "生成研究报告" });

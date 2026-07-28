@@ -9,7 +9,7 @@ from backend.app.core.errors import classify_failure
 from backend.app.core.readiness import get_readiness, reset_readiness_probe_cache
 from backend.app.core.runtime_config import sandbox_tool_disabled
 from backend.app.main import app
-from backend.app.repositories.research import create_task, get_usage_summary, update_task
+from backend.app.repositories.research import create_task, get_task, get_usage_summary, update_task
 from cli.agents.base import _apply_deepseek_options
 from cli.agents.reporter import generate_report
 from cli.agents.researcher import research_step
@@ -31,10 +31,11 @@ def test_budget_profiles_are_fixed():
         "max_steps": 3,
         "max_search_calls_per_step": 1,
         "max_crawl_pages_per_step": 1,
-        "max_tokens": 20_000,
+        "max_tokens": 30_000,
         "search_depth": "basic",
     }
-    assert get_budget("standard").max_tokens == 40_000
+    assert get_budget("standard").max_tokens == 60_000
+    assert get_budget("deep").max_tokens == 100_000
     assert get_budget("deep").search_depth == "advanced"
     assert get_budget("unknown").profile == "fast"
 
@@ -76,11 +77,11 @@ def test_task_budget_and_usage_summary_are_persisted(tmp_path, monkeypatch):
         user_id=db.LOCAL_DEFAULT_USER_ID,
         budget_profile="fast",
         max_steps=3,
-        max_tokens_budget=20_000,
+        max_tokens_budget=30_000,
         pricing_version=PRICING_VERSION,
     )
     assert task["budget_profile"] == "fast"
-    assert task["max_tokens_budget"] == 20_000
+    assert task["max_tokens_budget"] == 30_000
 
     update_task(
         task["task_id"],
@@ -96,6 +97,31 @@ def test_task_budget_and_usage_summary_are_persisted(tmp_path, monkeypatch):
     assert summary["completed_tasks"] == 1
     assert summary["total_tokens"] == 2000
     assert summary["total_search_credits"] == 3
+
+
+def test_legacy_budget_failure_is_upgraded_and_retryable(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    task = create_task(
+        "task_legacy_budget",
+        "legacy budget",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        budget_profile="fast",
+        max_steps=3,
+        max_tokens_budget=20_000,
+        pricing_version=PRICING_VERSION,
+    )
+    update_task(
+        task["task_id"],
+        status="failed",
+        error_code="budget_exceeded",
+        retryable=0,
+    )
+
+    db.init_db()
+    migrated = get_task(task["task_id"])
+
+    assert migrated["max_tokens_budget"] == 30_000
+    assert migrated["retryable"] == 1
 
 
 def test_tavily_usage_credits_are_returned(monkeypatch):

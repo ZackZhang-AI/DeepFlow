@@ -19,9 +19,9 @@ class ResearchBudget:
 
 
 _PROFILES = {
-    "fast": ResearchBudget("fast", 3, 1, 1, 20_000, "basic"),
-    "standard": ResearchBudget("standard", 5, 2, 2, 40_000, "basic"),
-    "deep": ResearchBudget("deep", 8, 3, 3, 70_000, "advanced"),
+    "fast": ResearchBudget("fast", 3, 1, 1, 30_000, "basic"),
+    "standard": ResearchBudget("standard", 5, 2, 2, 60_000, "basic"),
+    "deep": ResearchBudget("deep", 8, 3, 3, 100_000, "advanced"),
 }
 
 

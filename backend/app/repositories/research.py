@@ -26,7 +26,7 @@ def create_task(
     max_steps: int = 3,
     max_search_calls_per_step: int = 1,
     max_crawl_pages_per_step: int = 1,
-    max_tokens_budget: int = 20_000,
+    max_tokens_budget: int = 30_000,
     search_depth: str = "basic",
     planner_model: str = "deepseek-v4-flash",
     researcher_model: str = "deepseek-v4-flash",
