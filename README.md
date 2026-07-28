@@ -87,9 +87,25 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 | Agent 编排 | Python asyncio 状态机 |
 | 私域知识库 | SQLite 存储 chunk 和 embedding |
 | 搜索 | Tavily 或兼容搜索 Provider |
-| 模型 | DeepSeek / DashScope / OpenAI 兼容 Provider |
+| 模型 | DeepSeek V4 Flash/Pro；保留 DashScope/OpenAI 兼容 Provider |
 | 沙箱 | Docker 隔离执行；公共 API 禁止回退到本机 subprocess |
 | 导出 | Markdown, PDF, PPTX, 播客脚本 |
+
+## 低成本研究模式
+
+研究任务只能选择固定预算档位，后端会持久化实际限制并在每次模型、搜索和抓取调用前检查余额：
+
+| 档位 | 步骤 | 每步搜索 | 每步抓取 | Token 上限 | Tavily |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 快速 | 3 | 1 | 1 | 20,000 | basic |
+| 标准 | 5 | 2 | 2 | 40,000 | basic |
+| 深度 | 8 | 3 | 3 | 70,000 | advanced |
+
+- Planner、Researcher 默认使用 `deepseek-v4-flash`。
+- 快速报告使用 Flash，标准/深度报告使用 `deepseek-v4-pro`。
+- DeepSeek V4 显式关闭 thinking，费用按版本化价格表估算。
+- 任务页展示 token、人民币预估费用、搜索/抓取次数和 Tavily credits。
+- `402` 会立即标记为 `provider_balance_exhausted`，不会自动重试。
 
 ## 快速开始
 
@@ -137,7 +153,8 @@ python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 | API | `http://localhost:8000` |
 | Swagger | `http://localhost:8000/docs` |
 | 健康检查 | `http://localhost:8000/api/health` |
-| Provider 就绪检查 | `http://localhost:8000/api/system/readiness` |
+| Provider 配置检查 | `http://localhost:8000/api/system/readiness` |
+| Provider 真实探测 | `http://localhost:8000/api/system/readiness?probe=true` |
 
 ### 4. 启动前端
 
@@ -184,9 +201,10 @@ http://localhost:3001
 | 模块 | 代表接口 |
 | --- | --- |
 | Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
-| System | `GET /api/system/readiness` |
+| System | `GET /api/system/readiness?probe=true` |
 | Research | `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/retry`, `GET /api/research-tasks/{id}/events?after_seq=` |
 | Research | `POST /api/research-tasks`, `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/confirm-plan` |
+| Usage | `GET /api/research-tasks/usage-summary` |
 | Report | `GET /api/reports/{task_id}`, `PATCH /api/reports/{task_id}`, `GET /api/reports/{task_id}/download` |
 | Report Version | `GET /api/reports/{task_id}/versions`, `POST /api/reports/{task_id}/versions/{version_id}/restore` |
 | Knowledge | `POST /api/knowledge-documents/upload`, `GET /api/knowledge-documents/search`, `GET /api/knowledge-documents/{doc_id}/chunks` |
@@ -207,6 +225,16 @@ npm.cmd run lint
 npm.cmd run build
 npm.cmd run test:e2e
 ```
+
+真实质量评估默认是 dry-run，不会调用付费 API：
+
+```bash
+python -m evals.live_eval --formal
+```
+
+只有同时设置 `RUN_LIVE_E2E=1` 并显式传入 `--live` 才会执行真实研究。正式计划固定为 8 次快速、2 次标准，包含重试最多 12 次；原始结果写入已忽略的 `evals/results/`。
+
+2026-07-28 的受控评估消耗 12 次真实任务，模型预计费用 ¥0.2813、Tavily 38 credits。三个最终快速样本完成且引用有效率 100%；整体完成率未达到 90% 目标，详见 `evals/examples/live_eval_summary_2026-07-28.md`。达到硬上限后未继续付费重测。
 
 ## 当前边界
 
@@ -254,7 +282,8 @@ This repo is prepared for a controlled job-search demo deployment:
   ```bash
   python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
   ```
-- Render persistent disk: mount a disk and set `DEEPFLOW_DB_PATH=/var/data/deepflow.db`.
+- Render 免费实例没有持久磁盘，休眠或重启后 SQLite 数据可能丢失；求职演示通过启动时创建演示账号和示例模板恢复基础入口。
+- 需要保留历史数据时，升级到支持 persistent disk 的实例并设置 `DEEPFLOW_DB_PATH=/var/data/deepflow.db`。
 - Vercel environment: set `NEXT_PUBLIC_API_URL` to the Render backend URL.
 - Render environment: set `CORS_ORIGINS` to the exact Vercel origin.
 
@@ -272,6 +301,8 @@ KNOWLEDGE_WRITE_RATE_LIMIT_PER_HOUR=10
 ARTIFACT_RATE_LIMIT_PER_HOUR=10
 KNOWLEDGE_UPLOAD_MAX_BYTES=5242880
 ```
+
+`DEMO_PASSWORD` 必须在 Render Secret 中单独设置，不能使用 README 中公开的本地默认密码。Vercel Hobby 与 Render Free 可用于阶段性个人演示，现金部署成本为 0；免费后端不承诺历史数据持久化。
 
 Demo boundaries:
 

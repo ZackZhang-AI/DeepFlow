@@ -21,7 +21,7 @@ DeepFlow 是一个深度研究 Agent 工作台。用户输入研究主题后，�
 - Agent 编排：Python asyncio 状态机
 - RAG：SQLite 存储文档、chunk、embedding
 - 工具：内置工具注册表，预留 MCP 扩展
-- 模型：保留国内外模型 Provider 接口
+- 模型：DeepSeek V4 Flash/Pro，保留国内外模型 Provider 接口
 
 明确暂不采用：
 
@@ -111,7 +111,7 @@ DeepFlow 是一个深度研究 Agent 工作台。用户输入研究主题后，�
 - Markdown/PDF 导出。
 - PPTX 与播客脚本。
 - Coder Agent 与 Python 沙箱。
-- 成本、耗时、token、工具调用统计字段。
+- 固定预算档位、耗时、token、模型费用、搜索调用和 Tavily credits 统计。
 - 后端 smoke 测试。
 
 ## 7. Phase 3：产品化扩展
@@ -236,14 +236,14 @@ API：
 
 ### 当前边界
 
-工具启用状态为内存态，服务重启会恢复默认。后续生产化可持久化到数据库。
+工具启用状态已按用户持久化到 SQLite，服务重启后保持不变。
 
 ## 12. Coder Agent 与 Python 沙箱
 
 ### 当前实现
 
 - Python 代码生成。
-- 本地沙箱执行。
+- Docker 隔离执行；公共 API 禁止回退到本机 subprocess。
 - 危险操作拦截。
 - 执行超时。
 - 输出截断。
@@ -252,7 +252,7 @@ API：
 
 ### 当前边界
 
-当前以本地子进程为主，生产环境建议启用 Docker 或专用隔离运行时。
+公共部署默认关闭 Python 沙箱。只有 Docker readiness 正常并配置资源、网络与只读文件系统限制后才开放 Coder。
 
 ## 13. 报告与成果物
 
@@ -385,13 +385,15 @@ API：
 
 ## 18. 测试与验收
 
-已通过验证：
+固定验证：
 
 ```bash
-python -m pytest backend/tests/test_wave0_smoke.py -q
+python -m pytest backend/tests -q
+python -m pytest evals/tests -q
 python -m compileall cli backend evals
 npm.cmd run lint
 npm.cmd run build
+npm.cmd run test:e2e
 ```
 
 后端 smoke 覆盖：
@@ -407,20 +409,39 @@ npm.cmd run build
 - 模板创建与从模板启动研究。
 - 工作流创建、运行与 Trace。
 
-## 19. 后续生产化建议
+## 19. 求职演示版低成本稳定化
+
+当前研究模型与预算策略：
+
+| 档位 | 步骤 | 每步搜索 | 每步抓取 | Token 上限 | Tavily |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 快速 | 3 | 1 | 1 | 20,000 | basic |
+| 标准 | 5 | 2 | 2 | 40,000 | basic |
+| 深度 | 8 | 3 | 3 | 70,000 | advanced |
+
+- Planner、Researcher 使用 `deepseek-v4-flash`，快速 Reporter 使用 Flash。
+- 标准/深度 Reporter 使用 `deepseek-v4-pro`。
+- 所有 V4 请求默认关闭 thinking。
+- 每次调用前执行预算检查，恢复和重试沿用原任务预算。
+- 价格表记录版本，兼容保留 `cost_rmb`。
+- Provider 真实探测按需启用并缓存 10 分钟。
+- Live Eval 需要环境变量与命令行双重开关，正式计划最多 12 次真实任务。
+- 2026-07-28 真实评估共消耗 12 次、预计 ¥0.2813 和 38 Tavily credits；最终快速样本引用有效率 100%，但整体完成率尚未达到 90%。
+- 公网演示使用 Vercel Hobby + Render Free；免费 Render 的 SQLite 不承诺重启后持久化。
+
+## 20. 后续生产化建议
 
 当前版本已满足 PRD 功能闭环，但上线生产前建议继续增强：
 
 - 大文件解析与并发上传压力测试。
 - embedding/rerank provider 的失败降级和重试策略。
-- 工具启用状态持久化。
-- Python 沙箱切换到 Docker/Firecracker 等更强隔离。
+- Python 沙箱进一步评估 Firecracker 等更强隔离。
 - 更完整的权限 E2E。
 - 更细粒度的 Agent Eval。
-- 成本看板和预算告警。
+- 更完整的成本告警。
 - 数据库从 SQLite 迁移到 PostgreSQL/pgvector 的生产方案。
 
-## 20. 最终目标
+## 21. 最终目标
 
 DeepFlow 最终要达到：
 
