@@ -23,6 +23,8 @@ runs/
 
 # 数据库
 *.db
+*.db-wal
+*.db-shm
 
 # Node (前端)
 node_modules/
@@ -31,3 +33,6 @@ frontend/.next/
 .playwright-cli/
 frontend/test-results/
 frontend/playwright-report/
+
+# Live Eval runtime output (may contain task/source details)
+evals/results/

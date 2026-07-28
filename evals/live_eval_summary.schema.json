@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepflow.local/schemas/live-eval-summary.schema.json",
+  "title": "DeepFlow Live Eval Redacted Summary",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "started_at",
+    "finished_at",
+    "planned_runs",
+    "attempts_used",
+    "completed_runs",
+    "passed_runs",
+    "completion_rate",
+    "citation_validity",
+    "total_tokens",
+    "total_cost_rmb",
+    "total_search_credits",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "planned_runs": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "attempts_used": { "type": "integer", "minimum": 0, "maximum": 12 },
+    "completed_runs": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "passed_runs": { "type": "integer", "minimum": 0, "maximum": 10 },
+    "completion_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "citation_validity": { "type": "number", "minimum": 0, "maximum": 1 },
+    "total_tokens": { "type": "integer", "minimum": 0 },
+    "total_cost_rmb": { "type": "number", "minimum": 0 },
+    "total_search_credits": { "type": "integer", "minimum": 0 },
+    "cases": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "required": [
+          "category",
+          "status",
+          "passed",
+          "completed_steps",
+          "unique_sources",
+          "citation_validity",
+          "total_tokens",
+          "cost_rmb",
+          "search_credits",
+          "elapsed_seconds",
+          "error_code"
+        ],
+        "properties": {
+          "category": {
+            "enum": ["market", "competitive", "technical", "recent", "knowledge_base"]
+          },
+          "status": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "completed_steps": { "type": "integer", "minimum": 0 },
+          "unique_sources": { "type": "integer", "minimum": 0 },
+          "citation_validity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "total_tokens": { "type": "integer", "minimum": 0 },
+          "cost_rmb": { "type": "number", "minimum": 0 },
+          "search_credits": { "type": "integer", "minimum": 0 },
+          "elapsed_seconds": { "type": "number", "minimum": 0 },
+          "error_code": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
