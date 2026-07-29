@@ -54,6 +54,7 @@ class TaskBudget(BaseModel):
     max_search_calls_per_step: int
     max_crawl_pages_per_step: int
     max_tokens: int
+    report_reserve_tokens: int
     search_depth: str
 
 

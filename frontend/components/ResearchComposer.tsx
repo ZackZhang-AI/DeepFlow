@@ -15,9 +15,9 @@ export const RESEARCH_DEPTHS: Array<{
   maxSteps: number;
   estimate: string;
 }> = [
-  { id: "fast", title: "快速研究", time: "约 3 分钟", description: "3 步 · 3 万 Token", maxSteps: 3, estimate: "预计 ¥0.05–0.35" },
-  { id: "standard", title: "标准研究", time: "约 8 分钟", description: "5 步 · 6 万 Token", maxSteps: 5, estimate: "预计 ¥0.20–1.00" },
-  { id: "deep", title: "深度研究", time: "约 15 分钟", description: "8 步 · 10 万 Token", maxSteps: 8, estimate: "预计 ¥0.50–2.00" },
+  { id: "fast", title: "快速研究", time: "约 3 分钟", description: "3 步 · 5 万 Token · 含报告预留", maxSteps: 3, estimate: "预计 ¥0.05–0.50" },
+  { id: "standard", title: "标准研究", time: "约 8 分钟", description: "5 步 · 9 万 Token · 含报告预留", maxSteps: 5, estimate: "预计 ¥0.20–1.30" },
+  { id: "deep", title: "深度研究", time: "约 15 分钟", description: "8 步 · 16 万 Token · 含报告预留", maxSteps: 8, estimate: "预计 ¥0.50–2.80" },
 ];
 
 const QUICK_PROMPTS = [

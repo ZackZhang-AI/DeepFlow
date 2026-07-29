@@ -12,6 +12,7 @@ class ResearchBudget:
     max_search_calls_per_step: int
     max_crawl_pages_per_step: int
     max_tokens: int
+    report_reserve_tokens: int
     search_depth: str
 
     def model_dump(self) -> dict:
@@ -19,9 +20,9 @@ class ResearchBudget:
 
 
 _PROFILES = {
-    "fast": ResearchBudget("fast", 3, 1, 1, 30_000, "basic"),
-    "standard": ResearchBudget("standard", 5, 2, 2, 60_000, "basic"),
-    "deep": ResearchBudget("deep", 8, 3, 3, 100_000, "advanced"),
+    "fast": ResearchBudget("fast", 3, 1, 1, 50_000, 10_000, "basic"),
+    "standard": ResearchBudget("standard", 5, 2, 2, 90_000, 20_000, "basic"),
+    "deep": ResearchBudget("deep", 8, 3, 3, 160_000, 35_000, "advanced"),
 }
 
 
@@ -50,5 +51,6 @@ def budget_from_task(task: dict) -> ResearchBudget:
             task.get("max_crawl_pages_per_step") or default.max_crawl_pages_per_step
         ),
         max_tokens=int(task.get("max_tokens_budget") or default.max_tokens),
+        report_reserve_tokens=default.report_reserve_tokens,
         search_depth=task.get("search_depth") or default.search_depth,
     )

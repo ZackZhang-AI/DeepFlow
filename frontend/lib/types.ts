@@ -45,6 +45,7 @@ export interface TaskBudget {
   max_search_calls_per_step: number;
   max_crawl_pages_per_step: number;
   max_tokens: number;
+  report_reserve_tokens: number;
   search_depth: "basic" | "advanced";
 }
 

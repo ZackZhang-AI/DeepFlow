@@ -29,6 +29,9 @@ export function TaskBudgetPanel({ task }: { task: ResearchTask }) {
           <h2 id="budget-heading" className="text-base font-semibold text-[var(--ink)]">预算与用量</h2>
           <p className="mt-1 text-xs text-[var(--muted)]">
             {PROFILE_LABELS[budget.profile] ?? budget.profile}研究 · {budget.search_depth} 搜索
+            {budget.report_reserve_tokens
+              ? ` · 报告预留 ${formatNumber(budget.report_reserve_tokens)} Token`
+              : ""}
           </p>
         </div>
         <span className="text-lg font-semibold tabular-nums text-teal-700">{Math.round(budgetPercent)}%</span>

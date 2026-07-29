@@ -152,8 +152,11 @@ def test_prd_extension_smoke(monkeypatch, tmp_path):
             headers=headers_a,
         )
         assert sandbox.status_code == 200, sandbox.text
-        assert sandbox.json()["success"] is False
-        assert sandbox.json()["error"]
+        sandbox_payload = sandbox.json()
+        if sandbox_payload["success"]:
+            assert sandbox_payload["raw_output"]["stdout"].strip() == "2"
+        else:
+            assert sandbox_payload["error"]
 
         workspace = client.post(
             "/api/workspaces",

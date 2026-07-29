@@ -165,6 +165,10 @@ async def execute_research_task(task_id: str):
             "standard": 3072,
             "deep": 4096,
         }.get(budget.profile, 2048)
+        research_token_limit = max(
+            researcher_output_limit,
+            budget.max_tokens - budget.report_reserve_tokens,
+        )
         _ensure_token_budget(existing_tokens, budget.max_tokens)
 
         # ---- Phase 1: Researching ----
@@ -201,9 +205,22 @@ async def execute_research_task(task_id: str):
             step_num = i + 1
             if persisted_steps.get(step_num, {}).get("status") == "completed":
                 continue
-            update_task(task_id, current_step=step_num)
-
             use_researcher = step.need_search or sandbox_tool_disabled()
+            current_tokens = existing_tokens + total_prompt + total_completion
+            if (
+                use_researcher
+                and findings
+                and current_tokens + researcher_output_limit > research_token_limit
+            ):
+                await emitter.emit(
+                    "research.budget_reserved",
+                    completed_steps=len(findings),
+                    skipped_from_step=step_num,
+                    report_reserve_tokens=budget.report_reserve_tokens,
+                )
+                break
+
+            update_task(task_id, current_step=step_num)
             step_kind = "search" if use_researcher else "code"
             await emitter.emit(
                 "step.started",
@@ -220,24 +237,35 @@ async def execute_research_task(task_id: str):
                     document_ids=knowledge_document_ids if knowledge_enabled else [],
                 )
                 phase_started = time.time()
-                finding, pt, ct = await research_step(
-                    step=step, step_index=step_num,
-                    total_steps=len(plan.steps), locale=locale,
-                    local_references=local_refs,
-                    search_domains=search_domains,
-                    recency_days=recency_days,
-                    max_search_calls=budget.max_search_calls_per_step,
-                    max_crawl_pages=budget.max_crawl_pages_per_step,
-                    search_depth=budget.search_depth,
-                    token_budget_remaining=(
-                        budget.max_tokens
-                        - existing_tokens
-                        - total_prompt
-                        - total_completion
-                    ),
-                    model_override=researcher_model,
-                    max_summary_tokens=researcher_output_limit,
-                )
+                try:
+                    finding, pt, ct = await research_step(
+                        step=step, step_index=step_num,
+                        total_steps=len(plan.steps), locale=locale,
+                        local_references=local_refs,
+                        search_domains=search_domains,
+                        recency_days=recency_days,
+                        max_search_calls=budget.max_search_calls_per_step,
+                        max_crawl_pages=budget.max_crawl_pages_per_step,
+                        search_depth=budget.search_depth,
+                        token_budget_remaining=(
+                            research_token_limit
+                            - existing_tokens
+                            - total_prompt
+                            - total_completion
+                        ),
+                        model_override=researcher_model,
+                        max_summary_tokens=researcher_output_limit,
+                    )
+                except RuntimeError as exc:
+                    if findings and _is_token_budget_error(exc):
+                        await emitter.emit(
+                            "research.budget_reserved",
+                            completed_steps=len(findings),
+                            skipped_from_step=step_num,
+                            report_reserve_tokens=budget.report_reserve_tokens,
+                        )
+                        break
+                    raise
             else:
                 phase_started = time.time()
                 finding, pt, ct = await process_step(
@@ -310,6 +338,14 @@ async def execute_research_task(task_id: str):
                 sources_count=len(finding.references),
                 total_sources_so_far=total_sources,
             )
+            if current_tokens >= research_token_limit:
+                await emitter.emit(
+                    "research.budget_reserved",
+                    completed_steps=len(findings),
+                    skipped_from_step=step_num + 1,
+                    report_reserve_tokens=budget.report_reserve_tokens,
+                )
+                break
 
         if not findings:
             raise RuntimeError("所有研究步骤均未产生有效发现")
@@ -320,7 +356,7 @@ async def execute_research_task(task_id: str):
             budget.max_tokens,
         )
         if budget.profile == "fast":
-            report_output_limit = 1536
+            report_output_limit = 2048
             finding_context_limit = 800
         elif budget.profile == "standard":
             report_output_limit = 4096
@@ -358,10 +394,15 @@ async def execute_research_task(task_id: str):
         )
         total_prompt += pt
         total_completion += ct
-        _ensure_token_budget(
-            existing_tokens + total_prompt + total_completion,
-            budget.max_tokens,
-        )
+        if existing_tokens + total_prompt + total_completion > budget.max_tokens:
+            logger.warning(
+                "Report completed with a small token budget overage",
+                extra={
+                    "task_id": task_id,
+                    "user_id": task.get("user_id"),
+                    "phase": "reporting",
+                },
+            )
 
         # ---- Done ----
         total_tokens = existing_tokens + total_prompt + total_completion
@@ -439,6 +480,10 @@ def _ensure_call_capacity(
             f"current={current_tokens}, requested={requested_output_tokens}, "
             f"limit={max_tokens}"
         )
+
+
+def _is_token_budget_error(exc: BaseException) -> bool:
+    return "token budget" in str(exc).lower()
 
 
 def _build_research_tool_calls(finding: ResearchFinding, knowledge_hits: int) -> list[dict]:

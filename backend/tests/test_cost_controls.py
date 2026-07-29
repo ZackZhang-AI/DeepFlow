@@ -14,7 +14,7 @@ from cli.agents.base import _apply_deepseek_options
 from cli.agents.reporter import generate_report
 from cli.agents.researcher import research_step
 from cli.budget import get_budget
-from cli.models import ResearchFinding, ResearchPlan
+from cli.models import ResearchFinding, ResearchPlan, ResearchStep
 from cli.pricing import PRICING_VERSION, estimate_cost_rmb
 from cli.tools.web_search import _tavily_search
 
@@ -31,11 +31,14 @@ def test_budget_profiles_are_fixed():
         "max_steps": 3,
         "max_search_calls_per_step": 1,
         "max_crawl_pages_per_step": 1,
-        "max_tokens": 30_000,
+        "max_tokens": 50_000,
+        "report_reserve_tokens": 10_000,
         "search_depth": "basic",
     }
-    assert get_budget("standard").max_tokens == 60_000
-    assert get_budget("deep").max_tokens == 100_000
+    assert get_budget("standard").max_tokens == 90_000
+    assert get_budget("standard").report_reserve_tokens == 20_000
+    assert get_budget("deep").max_tokens == 160_000
+    assert get_budget("deep").report_reserve_tokens == 35_000
     assert get_budget("deep").search_depth == "advanced"
     assert get_budget("unknown").profile == "fast"
 
@@ -77,11 +80,11 @@ def test_task_budget_and_usage_summary_are_persisted(tmp_path, monkeypatch):
         user_id=db.LOCAL_DEFAULT_USER_ID,
         budget_profile="fast",
         max_steps=3,
-        max_tokens_budget=30_000,
+        max_tokens_budget=50_000,
         pricing_version=PRICING_VERSION,
     )
     assert task["budget_profile"] == "fast"
-    assert task["max_tokens_budget"] == 30_000
+    assert task["max_tokens_budget"] == 50_000
 
     update_task(
         task["task_id"],
@@ -97,6 +100,68 @@ def test_task_budget_and_usage_summary_are_persisted(tmp_path, monkeypatch):
     assert summary["completed_tasks"] == 1
     assert summary["total_tokens"] == 2000
     assert summary["total_search_credits"] == 3
+
+
+def test_research_reserves_budget_and_still_generates_report(tmp_path, monkeypatch):
+    from backend.app.services import research as research_service
+
+    _use_temp_db(tmp_path, monkeypatch)
+    plan = ResearchPlan(
+        title="预算收尾测试",
+        steps=[
+            ResearchStep(title="第一步", description="收集核心证据", need_search=True, step_type="research"),
+            ResearchStep(title="第二步", description="继续扩展证据", need_search=True, step_type="research"),
+            ResearchStep(title="第三步", description="补充更多证据", need_search=True, step_type="research"),
+        ],
+    )
+    task = create_task(
+        "task_report_reserve",
+        "budget reserve",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        budget_profile="fast",
+        max_steps=3,
+        max_tokens_budget=5_000,
+        pricing_version=PRICING_VERSION,
+    )
+    update_task(
+        task["task_id"],
+        status="queued",
+        plan_json=plan.model_dump_json(),
+        total_steps=3,
+    )
+    for index, step in enumerate(plan.steps, 1):
+        db.save_step(task["task_id"], index, step.title, step.description, step.need_search)
+
+    calls = {"research": 0, "report": 0}
+
+    async def fake_research_step(**kwargs):
+        calls["research"] += 1
+        return (
+            ResearchFinding(
+                step_id="step_1",
+                step_title="第一步",
+                problem_statement="收集核心证据",
+                findings_markdown="已获得足够形成报告的核心证据。",
+                conclusion="核心结论",
+            ),
+            500,
+            500,
+        )
+
+    async def fake_generate_report(**kwargs):
+        calls["report"] += 1
+        return "# 完整报告\n\n## 结论\n\n核心结论。", 100, 100
+
+    monkeypatch.setattr(research_service, "research_step", fake_research_step)
+    monkeypatch.setattr(research_service, "generate_report", fake_generate_report)
+    monkeypatch.setattr(research_service, "sandbox_tool_disabled", lambda: True)
+
+    asyncio.run(research_service.execute_research_task(task["task_id"]))
+    completed = get_task(task["task_id"])
+
+    assert calls == {"research": 1, "report": 1}
+    assert completed["status"] == "completed"
+    assert "完整报告" in completed["report_markdown"]
 
 
 def test_legacy_budget_failure_is_upgraded_and_retryable(tmp_path, monkeypatch):
@@ -120,7 +185,7 @@ def test_legacy_budget_failure_is_upgraded_and_retryable(tmp_path, monkeypatch):
     db.init_db()
     migrated = get_task(task["task_id"])
 
-    assert migrated["max_tokens_budget"] == 30_000
+    assert migrated["max_tokens_budget"] == 50_000
     assert migrated["retryable"] == 1
 
 
@@ -198,11 +263,11 @@ def test_fast_reporter_honors_output_budget(monkeypatch):
                 )
             ],
             model_override="deepseek-v4-flash",
-            max_output_tokens=1536,
+            max_output_tokens=2048,
             max_finding_chars_per_step=800,
         )
     )
-    assert captured["max_tokens"] == 1536
+    assert captured["max_tokens"] == 2048
     assert len(captured["user_message"]) < 3000
     assert "## 结论、## 主要分析、## 来源" in captured["user_message"]
 

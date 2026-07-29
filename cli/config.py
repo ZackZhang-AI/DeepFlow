@@ -38,7 +38,7 @@ class Config:
     MAX_STEPS: int = int(os.getenv("MAX_STEPS", "5"))
     MAX_SEARCH_CALLS: int = int(os.getenv("MAX_SEARCH_CALLS", "4"))
     MAX_CRAWL_PAGES: int = int(os.getenv("MAX_CRAWL_PAGES", "4"))
-    MAX_TOKEN_BUDGET: int = int(os.getenv("MAX_TOKEN_BUDGET", "100000"))
+    MAX_TOKEN_BUDGET: int = int(os.getenv("MAX_TOKEN_BUDGET", "160000"))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "2"))
     KNOWLEDGE_TOP_K: int = int(os.getenv("KNOWLEDGE_TOP_K", "5"))
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
