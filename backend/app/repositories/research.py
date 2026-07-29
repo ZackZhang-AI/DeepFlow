@@ -19,6 +19,8 @@ def create_task(
     locale: str = "zh-CN",
     search_domains: list[str] | None = None,
     recency_days: int | None = None,
+    knowledge_enabled: bool = False,
+    knowledge_document_ids: list[str] | None = None,
     user_id: str = LOCAL_DEFAULT_USER_ID,
     workspace_id: str | None = None,
     project_id: str | None = None,
@@ -38,11 +40,12 @@ def create_task(
     conn.execute(
         """INSERT INTO research_tasks
            (task_id, user_id, topic, locale, status, search_domains_json, recency_days,
+            knowledge_enabled, knowledge_document_ids_json,
             workspace_id, project_id, budget_profile, max_steps,
             max_search_calls_per_step, max_crawl_pages_per_step, max_tokens_budget,
             search_depth, planner_model, researcher_model, reporter_model, pricing_version,
             created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             task_id,
             user_id,
@@ -50,6 +53,8 @@ def create_task(
             locale,
             json.dumps(search_domains or [], ensure_ascii=False),
             recency_days,
+            1 if knowledge_enabled else 0,
+            json.dumps(knowledge_document_ids or [], ensure_ascii=False),
             workspace_id,
             project_id,
             budget_profile,

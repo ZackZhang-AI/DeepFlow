@@ -22,7 +22,9 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 - 文档状态：`pending | processing | ready | failed`。
 - 文档解析、分块、页码和 metadata 保留。
 - embedding 入库到 SQLite。
+- 默认 `EMBEDDING_PROVIDER=auto`：配置 DashScope Key 时使用云 embedding，否则自动使用零成本本地 hashing embedding。
 - hybrid 检索：向量召回 + 关键词召回 + 可选 rerank。
+- 新建研究时可显式启用知识库并选择文档，任务只召回所选且状态为 `ready` 的资料。
 - 研究报告引用统一使用 `kb://{doc_id}#{chunk_id}`。
 - 报告中的知识库引用可点击定位到具体 chunk 和页码。
 - 前端知识库面板支持查看文档状态、错误原因、chunk、页码、分数和召回模式。
@@ -138,7 +140,15 @@ DEEPSEEK_API_KEY=sk-...
 TAVILY_API_KEY=tvly-...
 ```
 
-如需启用知识库 embedding/rerank，可配置对应 Provider 的 Key。
+私域知识库默认无需额外 Key：`EMBEDDING_PROVIDER=auto` 会在没有 DashScope Key 时使用本地 embedding。若需要更强的语义召回或 rerank，再配置 `DASHSCOPE_API_KEY`。
+
+### 私域知识库使用流程
+
+1. 登录后在研究首页展开“私域知识库”。
+2. 上传 PDF、TXT、Markdown，或直接粘贴文本。
+3. 等待状态变为“可检索”，可先输入问题测试召回结果。
+4. 在研究范围中开启“使用私域知识库”，勾选本次研究要使用的资料。
+5. 创建并执行研究；知识库来源会以 `kb://{doc_id}#{chunk_id}` 出现在来源检查中，可定位到原始 chunk 和页码。
 
 ### 3. 启动后端
 

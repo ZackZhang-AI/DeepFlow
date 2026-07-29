@@ -182,20 +182,32 @@ def list_knowledge_chunks(doc_id: str, user_id: str | None = None) -> list[dict]
     return [dict(r) for r in rows]
 
 
-def list_embedded_knowledge_chunks(user_id: str | None = None) -> list[dict]:
+def list_embedded_knowledge_chunks(
+    user_id: str | None = None,
+    document_ids: list[str] | None = None,
+) -> list[dict]:
     conn = get_connection()
+    document_ids = list(dict.fromkeys(document_ids or []))
+    document_filter = ""
+    document_params: list[str] = []
+    if document_ids:
+        placeholders = ", ".join("?" for _ in document_ids)
+        document_filter = f" AND c.doc_id IN ({placeholders})"
+        document_params = document_ids
     if user_id is None:
         rows = conn.execute(
-            """SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
+            f"""SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
                   c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
            FROM knowledge_chunks c
            JOIN knowledge_documents d ON d.doc_id = c.doc_id
            WHERE d.status IN ('ready', 'completed')
-           ORDER BY d.updated_at DESC, c.chunk_index ASC"""
+             {document_filter}
+           ORDER BY d.updated_at DESC, c.chunk_index ASC""",
+            document_params,
         ).fetchall()
     else:
         rows = conn.execute(
-            """SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
+            f"""SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
                   c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
            FROM knowledge_chunks c
            JOIN knowledge_documents d ON d.doc_id = c.doc_id
@@ -207,8 +219,9 @@ def list_embedded_knowledge_chunks(user_id: str | None = None) -> list[dict]:
                  WHERE m.workspace_id = d.workspace_id AND m.user_id = ?
                )
              )
+             {document_filter}
            ORDER BY d.updated_at DESC, c.chunk_index ASC""",
-            (user_id, user_id),
+            [user_id, user_id, *document_params],
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

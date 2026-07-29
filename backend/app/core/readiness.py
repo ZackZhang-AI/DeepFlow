@@ -116,7 +116,11 @@ async def get_readiness(probe: bool = False) -> dict[str, Any]:
     missing_model_keys = _missing_model_keys()
     model_configured = not missing_model_keys
     search_configured = _configured("TAVILY_API_KEY") or _configured("SERPAPI_API_KEY")
-    embedding_configured = _configured("DASHSCOPE_API_KEY")
+    embedding_provider = os.getenv("EMBEDDING_PROVIDER", Config.EMBEDDING_PROVIDER).strip().lower()
+    embedding_uses_local = embedding_provider == "local" or (
+        embedding_provider == "auto" and not _configured("DASHSCOPE_API_KEY")
+    )
+    embedding_configured = embedding_uses_local or _configured("DASHSCOPE_API_KEY")
     result = {
         "model": _provider_status(
             model_configured,
@@ -130,8 +134,12 @@ async def get_readiness(probe: bool = False) -> dict[str, Any]:
         ),
         "embedding": _provider_status(
             embedding_configured,
-            "DashScope embedding provider is configured.",
-            "DASHSCOPE_API_KEY is not configured; public-search research remains available.",
+            (
+                "Zero-cost local embedding is available."
+                if embedding_uses_local
+                else "DashScope embedding provider is configured."
+            ),
+            "Configure DASHSCOPE_API_KEY or set EMBEDDING_PROVIDER=local.",
         ),
         "docker": await _docker_status(),
         "database": _database_status(),

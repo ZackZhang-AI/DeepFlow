@@ -9,13 +9,15 @@ import {
   getAuthToken,
   getCurrentUser,
   getSystemReadiness,
+  listKnowledgeDocuments,
   listResearchTasks,
   redirectToLogin,
 } from "@/lib/api";
 import { ResearchComposer, RESEARCH_DEPTHS, type ResearchDepth } from "@/components/ResearchComposer";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { ProviderReadinessCard } from "@/components/research/ProviderReadinessCard";
-import type { ProviderReadiness, ResearchStatus, ResearchTask } from "@/lib/types";
+import { KnowledgePanel } from "@/components/KnowledgePanel";
+import type { KnowledgeDocument, ProviderReadiness, ResearchStatus, ResearchTask } from "@/lib/types";
 
 const STATUS_LABELS: Record<ResearchStatus, string> = {
   coordinating: "分析需求",
@@ -52,6 +54,9 @@ export default function Home() {
   const [recentLoading, setRecentLoading] = useState(true);
   const [readiness, setReadiness] = useState<ProviderReadiness | null>(null);
   const [readinessLoading, setReadinessLoading] = useState(true);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
+  const [selectedKnowledgeDocumentIds, setSelectedKnowledgeDocumentIds] = useState<string[]>([]);
 
   const selectedDepth = useMemo(
     () => RESEARCH_DEPTHS.find((item) => item.id === researchDepth) ?? RESEARCH_DEPTHS[1],
@@ -64,8 +69,11 @@ export default function Home() {
       return;
     }
 
-    Promise.all([getCurrentUser(), listResearchTasks(5)])
-      .then(([, tasks]) => setRecentTasks(tasks))
+    Promise.all([getCurrentUser(), listResearchTasks(5), listKnowledgeDocuments().catch(() => [])])
+      .then(([, tasks, documents]) => {
+        setRecentTasks(tasks);
+        setKnowledgeDocuments(documents);
+      })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "页面加载失败"))
       .finally(() => {
         setAuthChecking(false);
@@ -91,6 +99,15 @@ export default function Home() {
     }
   }, []);
 
+  const handleKnowledgeDocumentsChange = useCallback((documents: KnowledgeDocument[]) => {
+    setKnowledgeDocuments(documents);
+    const readyIds = new Set(
+      documents.filter((document) => document.status === "ready").map((document) => document.doc_id),
+    );
+    if (readyIds.size === 0) setKnowledgeEnabled(false);
+    setSelectedKnowledgeDocumentIds((current) => current.filter((docId) => readyIds.has(docId)));
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!topic.trim() || submitting || !readiness?.ready) return;
     setSubmitting(true);
@@ -110,6 +127,10 @@ export default function Home() {
         recency,
         undefined,
         researchDepth,
+        {
+          enabled: knowledgeEnabled,
+          documentIds: knowledgeEnabled ? selectedKnowledgeDocumentIds : [],
+        },
       );
       router.push(`/research/${task.task_id}`);
     } catch (reason) {
@@ -135,7 +156,7 @@ export default function Home() {
       }
       setSubmitting(false);
     }
-  }, [readiness?.ready, recencyDays, researchDepth, router, selectedDepth.maxSteps, sourceDomains, submitting, topic]);
+  }, [knowledgeEnabled, readiness?.ready, recencyDays, researchDepth, router, selectedDepth.maxSteps, selectedKnowledgeDocumentIds, sourceDomains, submitting, topic]);
 
   if (authChecking) {
     return (
@@ -184,6 +205,9 @@ export default function Home() {
             researchDepth={researchDepth}
             sourceDomains={sourceDomains}
             recencyDays={recencyDays}
+            knowledgeEnabled={knowledgeEnabled}
+            knowledgeDocuments={knowledgeDocuments}
+            selectedKnowledgeDocumentIds={selectedKnowledgeDocumentIds}
             isPlanning={submitting}
             isClarifying={false}
             creationDisabledReason={
@@ -206,6 +230,8 @@ export default function Home() {
             onDepthChange={setResearchDepth}
             onSourceDomainsChange={setSourceDomains}
             onRecencyDaysChange={setRecencyDays}
+            onKnowledgeEnabledChange={setKnowledgeEnabled}
+            onKnowledgeSelectionChange={setSelectedKnowledgeDocumentIds}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -215,6 +241,10 @@ export default function Home() {
             onSubmit={() => void handleSubmit()}
           />
         </section>
+
+        <div id="private-knowledge" className="mt-8 scroll-mt-24">
+          <KnowledgePanel onDocumentsChange={handleKnowledgeDocumentsChange} />
+        </div>
 
         <section className="mt-12 border-t border-[var(--border)] pt-8" aria-labelledby="recent-research-heading">
           <div className="flex items-center justify-between gap-4">

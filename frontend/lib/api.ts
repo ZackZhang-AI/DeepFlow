@@ -180,6 +180,7 @@ export async function createResearch(
   recencyDays?: number,
   scope?: { workspaceId?: string; projectId?: string },
   budgetProfile: BudgetProfile = "fast",
+  knowledge?: { enabled: boolean; documentIds: string[] },
 ): Promise<ResearchTask> {
   return authJson<ResearchTask>(
     "/api/research-tasks",
@@ -195,6 +196,8 @@ export async function createResearch(
         workspace_id: scope?.workspaceId,
         project_id: scope?.projectId,
         budget_profile: budgetProfile,
+        knowledge_enabled: knowledge?.enabled ?? false,
+        knowledge_document_ids: knowledge?.documentIds ?? [],
       }),
     },
     "创建研究失败",

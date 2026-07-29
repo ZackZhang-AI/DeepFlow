@@ -78,6 +78,8 @@ def init_db() -> None:
             clarification_json TEXT DEFAULT '[]',
             search_domains_json TEXT DEFAULT '[]',
             recency_days INTEGER,
+            knowledge_enabled INTEGER DEFAULT 0,
+            knowledge_document_ids_json TEXT DEFAULT '[]',
             budget_profile TEXT DEFAULT 'fast',
             max_steps INTEGER DEFAULT 3,
             max_search_calls_per_step INTEGER DEFAULT 1,
@@ -349,6 +351,8 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "retryable", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "last_heartbeat_at", "TEXT")
     _ensure_column(conn, "research_tasks", "failed_phase", "TEXT DEFAULT ''")
+    _ensure_column(conn, "research_tasks", "knowledge_enabled", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "research_tasks", "knowledge_document_ids_json", "TEXT DEFAULT '[]'")
     _ensure_column(conn, "research_tasks", "max_steps", "INTEGER DEFAULT 5")
     _ensure_column(conn, "research_tasks", "budget_profile", "TEXT DEFAULT 'fast'")
     _ensure_column(conn, "research_tasks", "max_search_calls_per_step", "INTEGER DEFAULT 1")

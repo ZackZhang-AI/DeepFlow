@@ -42,6 +42,8 @@ class CreateResearchRequest(BaseModel):
     max_steps: int = Field(default=5, ge=2, le=8, description="最大步骤数")
     search_domains: list[str] = Field(default_factory=list, description="优先或限定搜索域名")
     recency_days: Optional[int] = Field(default=None, ge=1, le=3650, description="优先检索最近 N 天内容")
+    knowledge_enabled: bool = False
+    knowledge_document_ids: list[str] = Field(default_factory=list)
     workspace_id: Optional[str] = None
     project_id: Optional[str] = None
 
@@ -89,6 +91,8 @@ class ResearchTaskResponse(BaseModel):
     total_steps: int = 0
     report_id: Optional[str] = None
     clarification_questions: list[str] = Field(default_factory=list)
+    knowledge_enabled: bool = False
+    knowledge_document_ids: list[str] = Field(default_factory=list)
     phase: str = ""
     progress: float = 0.0
     retryable: bool = False

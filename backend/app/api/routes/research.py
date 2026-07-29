@@ -30,6 +30,7 @@ from backend.app.core.rate_limit import check_rate_limit
 from backend.app.core.runtime_config import research_task_rate_limit
 from backend.app.core.readiness import require_research_providers
 from backend.app.core.access import require_scope_access, require_task_access
+from backend.app.core.access import require_knowledge_access
 from backend.app.core.events import get_last_event_sequence
 from backend.app.core.job_queue import enqueue_job
 from cli.config import Config
@@ -54,6 +55,13 @@ async def create_research_task(
         write=True,
     )
     budget = get_budget(req.budget_profile)
+    knowledge_document_ids = list(dict.fromkeys(req.knowledge_document_ids))
+    if req.knowledge_enabled and not knowledge_document_ids:
+        raise HTTPException(status_code=422, detail="启用私域知识库时，请至少选择一份可检索文档")
+    for doc_id in knowledge_document_ids:
+        document = require_knowledge_access(doc_id, user["user_id"])
+        if document.get("status") not in ("ready", "completed"):
+            raise HTTPException(status_code=422, detail=f"知识库文档尚未就绪: {document['title']}")
     max_steps = min(budget.max_steps, Config.MAX_STEPS)
     reporter_model = (
         Config.PLANNER_MODEL if budget.profile == "fast" else Config.REPORTER_MODEL
@@ -67,6 +75,8 @@ async def create_research_task(
         req.locale,
         search_domains=req.search_domains,
         recency_days=req.recency_days,
+        knowledge_enabled=req.knowledge_enabled,
+        knowledge_document_ids=knowledge_document_ids,
         user_id=user["user_id"],
         workspace_id=req.workspace_id,
         project_id=req.project_id,
@@ -276,6 +286,8 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         total_steps=total_steps,
         report_id=f"rep_{task['task_id']}" if task.get("report_markdown") else None,
         clarification_questions=json.loads(task.get("clarification_json") or "[]"),
+        knowledge_enabled=bool(task.get("knowledge_enabled")),
+        knowledge_document_ids=json.loads(task.get("knowledge_document_ids_json") or "[]"),
         retryable=bool(task.get("retryable")),
         error_code=task.get("error_code") or "",
         error_message=task.get("error_message") or "",

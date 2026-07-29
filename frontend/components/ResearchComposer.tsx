@@ -2,7 +2,8 @@
 
 import type { KeyboardEventHandler } from "react";
 import { Button } from "@/components/ui/Button";
-import type { BudgetProfile } from "@/lib/types";
+import { KnowledgeSelector } from "@/components/research/KnowledgeSelector";
+import type { BudgetProfile, KnowledgeDocument } from "@/lib/types";
 
 export type ResearchDepth = BudgetProfile;
 
@@ -31,6 +32,9 @@ interface ResearchComposerProps {
   researchDepth: ResearchDepth;
   sourceDomains: string;
   recencyDays: string;
+  knowledgeEnabled: boolean;
+  knowledgeDocuments: KnowledgeDocument[];
+  selectedKnowledgeDocumentIds: string[];
   isPlanning: boolean;
   isClarifying: boolean;
   creationDisabledReason?: string;
@@ -39,6 +43,8 @@ interface ResearchComposerProps {
   onDepthChange: (depth: ResearchDepth) => void;
   onSourceDomainsChange: (value: string) => void;
   onRecencyDaysChange: (value: string) => void;
+  onKnowledgeEnabledChange: (enabled: boolean) => void;
+  onKnowledgeSelectionChange: (documentIds: string[]) => void;
   onKeyDown: KeyboardEventHandler<HTMLTextAreaElement>;
   onSubmit: () => void;
 }
@@ -49,6 +55,9 @@ export function ResearchComposer({
   researchDepth,
   sourceDomains,
   recencyDays,
+  knowledgeEnabled,
+  knowledgeDocuments,
+  selectedKnowledgeDocumentIds,
   isPlanning,
   isClarifying,
   creationDisabledReason,
@@ -57,9 +66,13 @@ export function ResearchComposer({
   onDepthChange,
   onSourceDomainsChange,
   onRecencyDaysChange,
+  onKnowledgeEnabledChange,
+  onKnowledgeSelectionChange,
   onKeyDown,
   onSubmit,
 }: ResearchComposerProps) {
+  const knowledgeSelectionMissing = knowledgeEnabled && selectedKnowledgeDocumentIds.length === 0;
+
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-[0_18px_45px_rgba(23,32,31,0.06)] transition-shadow focus-within:shadow-[0_20px_50px_rgba(23,32,31,0.09)]">
@@ -123,12 +136,22 @@ export function ResearchComposer({
               />
             </label>
           </div>
+          <div className="mt-3">
+            <KnowledgeSelector
+              enabled={knowledgeEnabled}
+              documents={knowledgeDocuments}
+              selectedDocumentIds={selectedKnowledgeDocumentIds}
+              disabled={isPlanning}
+              onEnabledChange={onKnowledgeEnabledChange}
+              onSelectionChange={onKnowledgeSelectionChange}
+            />
+          </div>
           <Button
             variant="primary"
             size="lg"
             fullWidth
             loading={isPlanning}
-            disabled={!topic.trim() || isClarifying || Boolean(creationDisabledReason)}
+            disabled={!topic.trim() || isClarifying || Boolean(creationDisabledReason) || knowledgeSelectionMissing}
             onClick={onSubmit}
             className="mt-4"
           >
@@ -137,6 +160,11 @@ export function ResearchComposer({
           {creationDisabledReason && (
             <p className="mt-2 text-xs leading-5 text-amber-700" role="status">
               {creationDisabledReason}
+            </p>
+          )}
+          {knowledgeSelectionMissing && (
+            <p className="mt-2 text-xs leading-5 text-amber-700" role="status">
+              请至少选择一份已完成索引的知识库资料。
             </p>
           )}
         </div>

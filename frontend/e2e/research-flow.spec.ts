@@ -43,6 +43,8 @@ function task(status: string, errorCode = "provider_timeout") {
     total_steps: 2,
     report_id: completed ? `rep_${TASK_ID}` : null,
     clarification_questions: [],
+    knowledge_enabled: false,
+    knowledge_document_ids: [],
     retryable: status === "failed",
     error_code: status === "failed" ? errorCode : "",
     error_message: status === "failed" ? failureMessages[errorCode] || "研究执行失败" : "",
@@ -191,6 +193,7 @@ test("计划确认后可完成、刷新恢复并定位知识库原文", async ({
 test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ page }) => {
   let ready = false;
   let requestBudgetProfile = "";
+  let requestedKnowledge: { enabled?: boolean; documentIds?: string[] } = {};
 
   await page.addInitScript(() => {
     window.localStorage.setItem("deepflow.auth.token", "e2e-token");
@@ -230,9 +233,34 @@ test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ pa
       return;
     }
     if (path.endsWith("/research-tasks") && request.method() === "POST") {
-      const body = request.postDataJSON() as { budget_profile?: string };
+      const body = request.postDataJSON() as {
+        budget_profile?: string;
+        knowledge_enabled?: boolean;
+        knowledge_document_ids?: string[];
+      };
       requestBudgetProfile = body.budget_profile || "";
+      requestedKnowledge = {
+        enabled: body.knowledge_enabled,
+        documentIds: body.knowledge_document_ids,
+      };
       await route.fulfill({ status: 201, json: task("clarifying") });
+      return;
+    }
+    if (path.endsWith("/knowledge-documents") && request.method() === "GET") {
+      await route.fulfill({
+        json: [{
+          doc_id: "doc-ready",
+          title: "DeepFlow 产品资料",
+          source_name: "prd.pdf",
+          source_type: "pdf",
+          content_length: 3200,
+          status: "ready",
+          chunk_count: 4,
+          error_message: "",
+          created_at: now,
+          updated_at: now,
+        }],
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { detail: `Unhandled E2E route: ${path}` } });
@@ -249,8 +277,12 @@ test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ pa
   ready = true;
   await page.getByRole("button", { name: "重新检查" }).click();
   await expect(page.getByText("研究服务已就绪")).toBeVisible();
+  await page.getByRole("checkbox", { name: /使用私域知识库/ }).check();
+  await expect(page.getByRole("checkbox", { name: /DeepFlow 产品资料/ })).toBeChecked();
   await createButton.click();
   await expect.poll(() => requestBudgetProfile).toBe("fast");
+  await expect.poll(() => requestedKnowledge.enabled).toBe(true);
+  expect(requestedKnowledge.documentIds).toEqual(["doc-ready"]);
 });
 
 test("历史页展示用户累计费用与搜索 Credits", async ({ page }) => {

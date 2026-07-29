@@ -20,6 +20,8 @@ export interface ResearchTask {
   total_steps: number;
   report_id: string | null;
   clarification_questions: string[];
+  knowledge_enabled: boolean;
+  knowledge_document_ids: string[];
   created_at: string;
   updated_at: string;
   errors_json?: string;

@@ -41,6 +41,7 @@ class Config:
     MAX_TOKEN_BUDGET: int = int(os.getenv("MAX_TOKEN_BUDGET", "100000"))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "2"))
     KNOWLEDGE_TOP_K: int = int(os.getenv("KNOWLEDGE_TOP_K", "5"))
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
     KNOWLEDGE_CANDIDATE_K: int = int(os.getenv("KNOWLEDGE_CANDIDATE_K", "20"))
     KNOWLEDGE_SCORE_THRESHOLD: float = float(os.getenv("KNOWLEDGE_SCORE_THRESHOLD", "0.20"))
     KNOWLEDGE_VECTOR_WEIGHT: float = float(os.getenv("KNOWLEDGE_VECTOR_WEIGHT", "0.70"))

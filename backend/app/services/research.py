@@ -141,6 +141,8 @@ async def execute_research_task(task_id: str):
         plan = ResearchPlan.model_validate_json(task["plan_json"])
         search_domains = json.loads(task.get("search_domains_json") or "[]")
         recency_days = task.get("recency_days")
+        knowledge_enabled = bool(task.get("knowledge_enabled"))
+        knowledge_document_ids = json.loads(task.get("knowledge_document_ids_json") or "[]")
         existing_tokens = int(task.get("tokens_used") or 0)
         existing_prompt = int(task.get("prompt_tokens") or 0)
         existing_completion = int(task.get("completion_tokens") or 0)
@@ -215,6 +217,7 @@ async def execute_research_task(task_id: str):
                 local_refs = _build_local_references(
                     step.title + "\n" + step.description,
                     user_id=task.get("user_id"),
+                    document_ids=knowledge_document_ids if knowledge_enabled else [],
                 )
                 phase_started = time.time()
                 finding, pt, ct = await research_step(
@@ -449,10 +452,21 @@ def _build_research_tool_calls(finding: ResearchFinding, knowledge_hits: int) ->
     return calls
 
 
-def _build_local_references(query: str, user_id: str | None = None) -> list[SourceReference]:
+def _build_local_references(
+    query: str,
+    user_id: str | None = None,
+    document_ids: list[str] | None = None,
+) -> list[SourceReference]:
     """把知识库向量检索结果转为 Researcher 可引用来源。"""
+    if not document_ids:
+        return []
     try:
-        chunks = search_knowledge_chunks(query, limit=Config.KNOWLEDGE_TOP_K, user_id=user_id)
+        chunks = search_knowledge_chunks(
+            query,
+            limit=Config.KNOWLEDGE_TOP_K,
+            user_id=user_id,
+            document_ids=document_ids,
+        )
     except EmbeddingError as exc:
         logger.warning("Knowledge retrieval skipped: %s", exc)
         return []

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from fastapi.testclient import TestClient
+
 from backend.app.api.routes.research import _task_response
 from backend.app.core import db
 from backend.app.core.events import append_event, list_events
@@ -76,6 +78,51 @@ def test_pending_text_document_can_be_processed(tmp_path, monkeypatch):
     assert ready["chunk_count"] > 0
 
 
+def test_local_embedding_supports_zero_cost_private_knowledge():
+    from backend.app.services.embedding import LocalHashEmbeddingService, _usable_api_key
+
+    service = LocalHashEmbeddingService()
+    first = service.embed_query("DeepFlow 私域知识库")
+    second = service.embed_query("DeepFlow 私域知识库")
+
+    assert first == second
+    assert len(first) == service.dimensions
+    assert any(value != 0 for value in first)
+    assert not _usable_api_key("your-dashscope-api-key")
+    assert _usable_api_key("sk-real-value")
+
+
+def test_knowledge_search_only_uses_selected_documents(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.services import knowledge
+    from backend.app.services.embedding import LocalHashEmbeddingService
+
+    monkeypatch.setattr(knowledge, "get_embedding_service", lambda: LocalHashEmbeddingService())
+    first = knowledge.queue_text_document(
+        title="产品定位",
+        content="DeepFlow 是一个可追溯的 AI 深度研究工作台。" * 40,
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+    )
+    second = knowledge.queue_text_document(
+        title="风险边界",
+        content="DeepFlow 的风险包括第三方 Provider 波动和预算限制。" * 40,
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+    )
+    knowledge.process_pending_document(first["doc_id"], db.LOCAL_DEFAULT_USER_ID)
+    knowledge.process_pending_document(second["doc_id"], db.LOCAL_DEFAULT_USER_ID)
+
+    hits = knowledge.search_knowledge_chunks(
+        "DeepFlow 风险 Provider",
+        limit=5,
+        score_threshold=0,
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        document_ids=[second["doc_id"]],
+    )
+
+    assert hits
+    assert {hit["doc_id"] for hit in hits} == {second["doc_id"]}
+
+
 def test_report_removes_sources_not_recorded_by_researcher():
     from cli.agents.reporter import _remove_unrecorded_links
 
@@ -102,6 +149,65 @@ def test_research_budget_survives_clarification_checkpoint(tmp_path, monkeypatch
         max_steps=2,
     )
     assert task["max_steps"] == 2
+
+
+def test_research_task_persists_private_knowledge_selection(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    task = db.create_task(
+        "task_private_knowledge",
+        "selected knowledge",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        knowledge_enabled=True,
+        knowledge_document_ids=["doc_a", "doc_b"],
+    )
+    response = _task_response(task)
+
+    assert response.knowledge_enabled is True
+    assert response.knowledge_document_ids == ["doc_a", "doc_b"]
+
+
+def test_create_research_validates_and_returns_selected_knowledge(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.api.routes import research as research_routes
+    from backend.app.main import app
+    from backend.app.services import knowledge
+    from backend.app.services.embedding import LocalHashEmbeddingService
+
+    monkeypatch.setattr(research_routes, "require_research_providers", lambda: None)
+    monkeypatch.setattr(research_routes, "enqueue_job", lambda *args, **kwargs: "job_test")
+    monkeypatch.setattr(knowledge, "get_embedding_service", lambda: LocalHashEmbeddingService())
+
+    with TestClient(app) as client:
+        registered = client.post(
+            "/api/auth/register",
+            json={"username": "rag_selection_user", "password": "password123"},
+        )
+        assert registered.status_code == 201
+        token = registered.json()["access_token"]
+        user_id = registered.json()["user"]["user_id"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        document = knowledge.queue_text_document(
+            title="Selected RAG document",
+            content="DeepFlow selected private knowledge." * 30,
+            user_id=user_id,
+        )
+        knowledge.process_pending_document(document["doc_id"], user_id)
+
+        created = client.post(
+            "/api/research-tasks",
+            headers=headers,
+            json={
+                "topic": "Use only the selected private document for this research",
+                "knowledge_enabled": True,
+                "knowledge_document_ids": [document["doc_id"]],
+            },
+        )
+
+        assert created.status_code == 201, created.text
+        payload = created.json()
+        assert payload["knowledge_enabled"] is True
+        assert payload["knowledge_document_ids"] == [document["doc_id"]]
 
 
 def test_placeholder_provider_key_is_not_usable():

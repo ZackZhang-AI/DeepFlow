@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   createKnowledgeDocument,
   deleteKnowledgeDocument,
@@ -72,7 +72,11 @@ function StoredChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
   );
 }
 
-export function KnowledgePanel() {
+interface KnowledgePanelProps {
+  onDocumentsChange?: (documents: KnowledgeDocument[]) => void;
+}
+
+export function KnowledgePanel({ onDocumentsChange }: KnowledgePanelProps) {
   const [open, setOpen] = useState(false);
   const [docs, setDocs] = useState<KnowledgeDocument[]>([]);
   const [hits, setHits] = useState<KnowledgeSearchHit[]>([]);
@@ -87,13 +91,26 @@ export function KnowledgePanel() {
   const [loadingChunks, setLoadingChunks] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
-      setDocs(await listKnowledgeDocuments());
+      const documents = await listKnowledgeDocuments();
+      setDocs(documents);
+      onDocumentsChange?.(documents);
     } catch (e) {
       setError(e instanceof Error ? e.message : "知识库加载失败");
     }
-  };
+  }, [onDocumentsChange]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!docs.some((doc) => doc.status === "pending" || doc.status === "processing")) return;
+    const timer = window.setInterval(() => void refresh(), 2000);
+    return () => window.clearInterval(timer);
+  }, [docs, refresh]);
 
   const toggleOpen = async () => {
     const nextOpen = !open;

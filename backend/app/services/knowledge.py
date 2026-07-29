@@ -271,6 +271,7 @@ def search_knowledge_chunks(
     score_threshold: float | None = None,
     use_rerank: bool | None = None,
     user_id: str | None = None,
+    document_ids: list[str] | None = None,
 ) -> list[dict]:
     query = query.strip()
     if not query:
@@ -280,7 +281,7 @@ def search_knowledge_chunks(
     if not embedding:
         return []
 
-    rows = list_embedded_knowledge_chunks(user_id=user_id)
+    rows = list_embedded_knowledge_chunks(user_id=user_id, document_ids=document_ids)
     limit = limit or Config.KNOWLEDGE_TOP_K
     candidate_limit = max(Config.KNOWLEDGE_CANDIDATE_K, limit)
     score_threshold = Config.KNOWLEDGE_SCORE_THRESHOLD if score_threshold is None else score_threshold
