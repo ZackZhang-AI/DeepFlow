@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEventHandler } from "react";
+import { useRef, useState, type KeyboardEventHandler } from "react";
 import { Button } from "@/components/ui/Button";
 import { KnowledgeSelector } from "@/components/research/KnowledgeSelector";
 import type { BudgetProfile, KnowledgeDocument } from "@/lib/types";
@@ -20,11 +20,64 @@ export const RESEARCH_DEPTHS: Array<{
   { id: "deep", title: "深度研究", time: "约 15 分钟", description: "8 步 · 16 万 Token · 含报告预留", maxSteps: 8, estimate: "预计 ¥0.50–2.80" },
 ];
 
-const QUICK_PROMPTS = [
-  { id: "market", label: "市场分析", prompt: "分析某个市场的发展趋势、主要玩家和商业化机会" },
-  { id: "competitor", label: "竞品研究", prompt: "对比分析几个产品的定位、功能、商业模式和优劣势" },
-  { id: "tech", label: "技术调研", prompt: "调研某项技术的原理、应用场景、代表产品和发展趋势" },
+const QUESTION_SUGGESTIONS = [
+  {
+    id: "market-opportunity",
+    category: "市场机会",
+    title: "判断一个市场是否值得进入",
+    prompt: "分析 2026 年中国企业级 AI Agent 市场的规模、主要玩家、客户需求与商业化机会",
+  },
+  {
+    id: "competitor-decision",
+    category: "竞品决策",
+    title: "比较企业大模型产品",
+    prompt: "对比 DeepSeek、通义千问和豆包大模型面向企业应用的能力、成本、生态与适用场景",
+  },
+  {
+    id: "technology-selection",
+    category: "技术选型",
+    title: "设计企业级 RAG 方案",
+    prompt: "评估企业知识库 RAG 的混合检索、重排与引用追溯方案，并给出技术选型建议",
+  },
+  {
+    id: "industry-trend",
+    category: "趋势判断",
+    title: "追踪近期行业变化",
+    prompt: "梳理最近 90 天 AI Agent 产品和基础设施的重要动态，并判断对产品路线的影响",
+  },
+  {
+    id: "user-insight",
+    category: "用户洞察",
+    title: "发现未满足的用户需求",
+    prompt: "研究中小团队使用 AI 深度研究工具的核心场景、现有替代方案与未满足需求",
+  },
+  {
+    id: "job-preparation",
+    category: "求职准备",
+    title: "制定 AI 产品求职计划",
+    prompt: "分析 AI 产品经理岗位的核心能力、常见面试题与作品集评价标准，并制定四周准备计划",
+  },
+  {
+    id: "product-strategy",
+    category: "产品策略",
+    title: "规划深度研究产品路线",
+    prompt: "分析 AI 深度研究产品的目标用户、关键使用场景、能力边界与下一阶段产品优先级",
+  },
+  {
+    id: "business-model",
+    category: "商业分析",
+    title: "验证产品商业模式",
+    prompt: "研究 AI 研究助手的主流定价方式、付费驱动因素和获客渠道，并提出商业化建议",
+  },
+  {
+    id: "risk-assessment",
+    category: "风险评估",
+    title: "识别方案落地风险",
+    prompt: "评估企业部署生成式 AI 应用时的数据安全、合规、模型成本与组织协作风险",
+  },
 ] as const;
+
+const SUGGESTIONS_PER_PAGE = 3;
 
 interface ResearchComposerProps {
   topic: string;
@@ -71,7 +124,24 @@ export function ResearchComposer({
   onKeyDown,
   onSubmit,
 }: ResearchComposerProps) {
+  const topicRef = useRef<HTMLTextAreaElement>(null);
+  const [suggestionPage, setSuggestionPage] = useState(0);
   const knowledgeSelectionMissing = knowledgeEnabled && selectedKnowledgeDocumentIds.length === 0;
+  const suggestionPageCount = Math.ceil(QUESTION_SUGGESTIONS.length / SUGGESTIONS_PER_PAGE);
+  const visibleSuggestions = QUESTION_SUGGESTIONS.slice(
+    suggestionPage * SUGGESTIONS_PER_PAGE,
+    (suggestionPage + 1) * SUGGESTIONS_PER_PAGE,
+  );
+
+  const selectSuggestion = (promptId: string, prompt: string) => {
+    onQuickPrompt(promptId, prompt);
+    requestAnimationFrame(() => {
+      const textarea = topicRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(prompt.length, prompt.length);
+    });
+  };
 
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -81,6 +151,7 @@ export function ResearchComposer({
             研究主题
           </label>
           <textarea
+            ref={topicRef}
             id="research-topic"
             value={topic}
             onChange={(event) => onTopicChange(event.target.value)}
@@ -90,24 +161,43 @@ export function ResearchComposer({
             className="mt-3 min-h-40 w-full resize-none bg-transparent text-base leading-7 text-[var(--ink)] outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-44 sm:text-lg"
             rows={5}
           />
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">
-            <span className="mr-1 text-xs text-[var(--muted)]">快捷开始</span>
-            {QUICK_PROMPTS.map((item) => (
+          <div className="mt-3 border-t border-[var(--border)] pt-4">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-medium text-[var(--muted)]">推荐研究问题</span>
               <button
-                key={item.id}
                 type="button"
-                aria-pressed={selectedQuickPrompt === item.id}
                 disabled={isPlanning}
-                onClick={() => onQuickPrompt(item.id, item.prompt)}
-                className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] disabled:pointer-events-none disabled:opacity-45 ${
-                  selectedQuickPrompt === item.id
-                    ? "border-teal-300 bg-teal-50 text-teal-800"
-                    : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:bg-white hover:text-[var(--ink)]"
-                }`}
+                onClick={() => setSuggestionPage((current) => (current + 1) % suggestionPageCount)}
+                className="min-h-9 shrink-0 px-2 text-xs font-medium text-teal-700 transition-colors hover:text-teal-900 focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] disabled:pointer-events-none disabled:opacity-45"
               >
-                {item.label}
+                换一组
               </button>
-            ))}
+            </div>
+            <div
+              className="mt-2 grid snap-x snap-mandatory grid-flow-col auto-cols-[86%] gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 sm:overflow-visible sm:pb-0"
+              aria-label="研究问题推荐"
+            >
+              {visibleSuggestions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={selectedQuickPrompt === item.id}
+                  disabled={isPlanning}
+                  onClick={() => selectSuggestion(item.id, item.prompt)}
+                  className={`min-h-24 snap-start rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)] disabled:pointer-events-none disabled:opacity-45 ${
+                    selectedQuickPrompt === item.id
+                      ? "border-teal-300 bg-teal-50 text-teal-800"
+                      : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--ink)] hover:border-teal-200 hover:bg-white"
+                  }`}
+                >
+                  <span className="block text-[11px] font-medium text-teal-700">{item.category}</span>
+                  <span className="mt-1 block text-xs font-semibold leading-5">{item.title}</span>
+                  <span className="mt-1 block line-clamp-2 text-[11px] leading-4 text-[var(--muted)]">
+                    {item.prompt}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

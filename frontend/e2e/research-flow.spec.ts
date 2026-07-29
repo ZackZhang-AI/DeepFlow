@@ -271,6 +271,13 @@ test("首页默认快速预算，Provider 未就绪时禁止创建", async ({ pa
   await expect(page.getByRole("radio", { name: /快速研究/ })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("预计 ¥0.05–0.50")).toBeVisible();
   await expect(page.getByText("模型账户余额不足，请充值后重新检查。")).toBeVisible();
+  await expect(page.getByText("推荐研究问题")).toBeVisible();
+  await page.getByRole("button", { name: /判断一个市场是否值得进入/ }).click();
+  await expect(page.getByLabel("研究主题")).toHaveValue(
+    "分析 2026 年中国企业级 AI Agent 市场的规模、主要玩家、客户需求与商业化机会",
+  );
+  await page.getByRole("button", { name: "换一组" }).click();
+  await expect(page.getByRole("button", { name: /追踪近期行业变化/ })).toBeVisible();
   await page.getByLabel("研究主题").fill("低成本 AI Agent 市场研究");
   const createButton = page.getByRole("button", { name: "生成研究报告" });
   await expect(createButton).toBeDisabled();
