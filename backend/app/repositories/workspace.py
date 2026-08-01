@@ -232,7 +232,7 @@ def get_shared_resource(token: str) -> tuple[dict | None, dict | None]:
         else:
             resource = conn.execute(
                 """SELECT artifact_id, task_id, artifact_type, title, content,
-                          created_at,
+                          metadata_json, created_at,
                           COALESCE((SELECT is_demo FROM research_tasks t
                                     WHERE t.task_id = artifacts.task_id), 0) AS is_demo
                    FROM artifacts WHERE artifact_id = ?""",

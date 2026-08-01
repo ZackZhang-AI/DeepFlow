@@ -319,10 +319,27 @@ export default function SharedPage() {
               </dl>
             </div>
 
-            <div className="prose mt-7 max-w-none overflow-hidden prose-headings:break-words prose-headings:text-[var(--ink)] prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:break-words prose-p:leading-8 prose-p:text-slate-700 prose-a:break-all prose-a:text-teal-700 prose-a:underline prose-strong:text-[var(--ink)] prose-pre:max-w-full prose-pre:overflow-x-auto prose-table:block prose-table:max-w-full prose-table:overflow-x-auto prose-th:bg-[var(--surface-muted)] prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-[var(--border)] prose-td:px-3 prose-td:py-2 prose-li:text-slate-700">
+            <div className="mt-7 min-w-0 overflow-hidden text-slate-700">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  h1: ({ children }) => <h1 className="mb-5 mt-8 break-words text-2xl font-semibold leading-tight text-[var(--ink)] first:mt-0">{children}</h1>,
+                  h2: ({ children }) => <h2 className="mb-4 mt-8 break-words border-b border-[var(--border)] pb-2 text-xl font-semibold leading-snug text-[var(--ink)]">{children}</h2>,
+                  h3: ({ children }) => <h3 className="mb-3 mt-6 break-words text-lg font-semibold leading-snug text-[var(--ink)]">{children}</h3>,
+                  p: ({ children }) => <p className="my-4 break-words text-sm leading-8 text-slate-700 sm:text-base">{children}</p>,
+                  ul: ({ children }) => <ul className="my-4 list-disc space-y-2 pl-6 text-sm leading-7 text-slate-700 sm:text-base">{children}</ul>,
+                  ol: ({ children }) => <ol className="my-4 list-decimal space-y-2 pl-6 text-sm leading-7 text-slate-700 sm:text-base">{children}</ol>,
+                  li: ({ children }) => <li className="break-words pl-1">{children}</li>,
+                  table: ({ children }) => <table className="my-6 block w-full max-w-full overflow-x-auto border-collapse text-left text-sm">{children}</table>,
+                  th: ({ children }) => <th className="whitespace-nowrap border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-[var(--ink)]">{children}</th>,
+                  td: ({ children }) => <td className="min-w-32 border border-[var(--border)] px-3 py-2 align-top leading-6 text-slate-700">{children}</td>,
+                  blockquote: ({ children }) => <blockquote className="my-5 border-l-4 border-teal-500 bg-teal-50/60 px-4 py-2 text-slate-600">{children}</blockquote>,
+                  pre: ({ children }) => <pre className="my-5 max-w-full overflow-x-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-100 sm:text-sm">{children}</pre>,
+                  code: ({ className, children }) => className ? (
+                    <code className={`${className} font-mono`}>{children}</code>
+                  ) : (
+                    <code className="break-words rounded bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-[0.9em] text-teal-800">{children}</code>
+                  ),
                   a: ({ href, children, ...props }) => {
                     const external = typeof href === "string" && /^https?:\/\//i.test(href);
                     return (
@@ -331,6 +348,7 @@ export default function SharedPage() {
                         href={href}
                         target={external ? "_blank" : undefined}
                         rel={external ? "noopener noreferrer" : undefined}
+                        className="break-all font-medium text-teal-700 underline decoration-teal-300 underline-offset-2 hover:text-teal-900"
                       >
                         {children}
                       </a>

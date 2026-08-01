@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
-const baseURL = externalBaseUrl || "http://127.0.0.1:3100";
+const devPort = process.env.PLAYWRIGHT_PORT || "3100";
+const baseURL = externalBaseUrl || `http://127.0.0.1:${devPort}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -25,8 +26,8 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
-        url: "http://127.0.0.1:3100",
+        command: `npm run dev -- --hostname 127.0.0.1 --port ${devPort}`,
+        url: `http://127.0.0.1:${devPort}`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
