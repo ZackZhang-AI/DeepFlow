@@ -1,5 +1,9 @@
 # DeepFlow CLI 依赖
 
+# 公网 Web API 运行时（Render 全新环境也从根依赖安装）
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
 # LLM API
 openai>=1.30.0
 

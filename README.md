@@ -10,6 +10,15 @@ DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输�
 
 登录后的研究工作台集中展示研究主题、来源范围、研究深度与报告生成入口。
 
+## 公网演示模式
+
+DeepFlow 支持两种互不混淆的演示入口：
+
+- **公开样例**：无需登录，通过 `/shared/deepflow-showcase` 查看预置的只读研究报告，不调用 DeepSeek、Tavily 或 embedding 服务。
+- **私密演示账号**：用于面试现场展示真实研究工作台。公网密码只保存在 Render Secret，不写入仓库、README 或前端环境变量。
+
+Render Free 可能休眠，首次打开时需要等待后端唤醒。免费实例的本地 SQLite 数据在重启、重新部署或实例回收后可能丢失；启用 `DEMO_SEED_ENABLED=true` 后，固定样例会在启动时幂等重建，但访客创建的真实任务、上传资料和历史记录**不保证持久化**。
+
 ## 已实现能力
 
 ### 研究主流程
@@ -198,7 +207,7 @@ http://localhost:3001
 密码：DeepFlow2026!
 ```
 
-该账号只用于本地开发和功能演示。公开部署前必须修改 `DEMO_USERNAME`、`DEMO_PASSWORD`，并建议设置 `ALLOW_PUBLIC_REGISTRATION=false`。演示账号只在首次不存在时创建；修改密码后如需更新已有账号，请重新注册新账号或清理本地演示数据库。
+该账号只用于本地开发和功能演示，不是公网账号。公开部署必须在 Render Secret 中单独设置强 `DEMO_PASSWORD`，并保持 `ALLOW_PUBLIC_REGISTRATION=false`。演示账号只在首次不存在时创建；修改密码后如需更新已有账号，请重新注册新账号或清理本地演示数据库。
 
 ## 主要页面
 
@@ -243,6 +252,8 @@ npm.cmd run lint
 npm.cmd run build
 npm.cmd run test:e2e
 ```
+
+GitHub Actions 执行同一组离线检查。前端 Playwright 测试通过路由 Mock 提供 API 响应，CI 不配置 `DEEPSEEK_API_KEY`、`TAVILY_API_KEY` 或其他真实 Provider Key，因此不会产生模型或搜索费用。付费 Live Eval 必须由开发者显式设置 `RUN_LIVE_E2E=1` 并传入 `--live`，不属于 CI 和零成本部署验收。
 
 真实质量评估默认是 dry-run，不会调用付费 API：
 
@@ -290,41 +301,41 @@ DeepFlow/
 
 MIT
 
-## Demo Deployment Notes
+## 零成本公网部署
 
-This repo is prepared for a controlled job-search demo deployment:
+### 1. 部署 Render 后端
 
-- Frontend: deploy `frontend/` to Vercel.
-- Backend: deploy the repository to Render as a Web Service.
-- Render start command:
-  ```bash
-  python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
-  ```
-- Render 免费实例没有持久磁盘，休眠或重启后 SQLite 数据可能丢失；求职演示通过启动时创建演示账号和示例模板恢复基础入口。
-- 需要保留历史数据时，升级到支持 persistent disk 的实例并设置 `DEEPFLOW_DB_PATH=/var/data/deepflow.db`。
-- Vercel environment: set `NEXT_PUBLIC_API_URL` to the Render backend URL.
-- Render environment: set `CORS_ORIGINS` to the exact Vercel origin.
+1. 在 Render 选择 **New > Blueprint**，连接此仓库。根目录的 `render.yaml` 会创建 Free Python Web Service。
+2. 创建时填写所有标记为 `sync: false` 的变量：
+   - `CORS_ORIGINS`：Vercel 最终域名，例如 `https://deepflow-demo.vercel.app`，不要填写 `*`。
+   - `DEMO_PASSWORD`：公网私密演示账号的强密码，不得使用上文公开的本地密码。
+   - `DEEPSEEK_API_KEY`、`TAVILY_API_KEY`：只有私密账号需要执行真实研究时才填写；只展示公开样例时可留空。
+3. Blueprint 已固定启用样例种子、关闭公开注册和 Python 沙箱，并将真实研究限制为每小时 3 次。
+4. 部署后访问 `https://<render-service>/api/health`，确认返回 `status: ok`。
 
-Recommended public demo settings:
+Render 启动命令由 Blueprint 固定为：
 
-```env
-ALLOW_PUBLIC_REGISTRATION=false
-DEMO_USERNAME=interviewer
-DEMO_PASSWORD=<strong-demo-password>
-DISABLE_SANDBOX_TOOL=true
-RATE_LIMIT_WINDOW_SECONDS=3600
-RESEARCH_TASK_RATE_LIMIT_PER_HOUR=10
-TOOL_TEST_RATE_LIMIT_PER_HOUR=10
-KNOWLEDGE_WRITE_RATE_LIMIT_PER_HOUR=10
-ARTIFACT_RATE_LIMIT_PER_HOUR=10
-KNOWLEDGE_UPLOAD_MAX_BYTES=5242880
+```bash
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-`DEMO_PASSWORD` 必须在 Render Secret 中单独设置，不能使用 README 中公开的本地默认密码。Vercel Hobby 与 Render Free 可用于阶段性个人演示，现金部署成本为 0；免费后端不承诺历史数据持久化。
+### 2. 部署 Vercel 前端
 
-Demo boundaries:
+1. 在 Vercel 导入同一仓库，将 **Root Directory** 设置为 `frontend/`。
+2. 保持 Framework Preset 为 Next.js；`frontend/vercel.json` 只声明兼容的安装和构建命令，不硬编码后端域名。
+3. 配置环境变量：
 
-- SQLite is intentionally kept for the demo; use PostgreSQL/pgvector before operating this as a real multi-user product.
-- Public registration should stay disabled for interview/demo links.
-- Python sandbox testing should stay disabled unless the backend runs it with container isolation.
-- Keep API keys in platform environment variables only; never commit `.env`.
+```env
+NEXT_PUBLIC_API_URL=https://<render-service>
+NEXT_PUBLIC_DEMO_SHARE_TOKEN=deepflow-showcase
+```
+
+4. 首次部署取得 Vercel 正式域名后，将其精确写回 Render 的 `CORS_ORIGINS` 并重新部署后端。
+5. 验收公开路径 `/shared/deepflow-showcase` 和私密登录流程；验收期间不要调用 `readiness?probe=true`，也不要启动 Live Eval。
+
+### 部署边界
+
+- Vercel Hobby 与 Render Free 用于个人求职演示，部署现金成本为 0，免费额度或平台规则变化仍可能导致服务暂停。
+- Render Free 的 SQLite 是易失存储。演示样例可由种子重建，真实研究任务、知识库上传、报告编辑和用户历史不保证持久化。
+- 如需可靠保存真实数据，应升级为持久磁盘并设置 `DEEPFLOW_DB_PATH=/var/data/deepflow.db`，或迁移到持久数据库；这不属于零成本方案。
+- 公开访客只使用只读分享页；公开注册保持关闭，Python 沙箱保持禁用，Provider Key 仅存于 Render Secret。
