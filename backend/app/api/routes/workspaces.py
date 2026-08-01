@@ -182,7 +182,13 @@ async def get_shared_resource(token: str):
     if not resource:
         detail = "Report not found" if share_dict["resource_type"] == "task_report" else "Artifact not found"
         raise HTTPException(status_code=404, detail=detail)
-    return {"share": share_dict, "resource": resource, "readonly": True}
+    public_share = {
+        "share_id": share_dict["share_id"],
+        "resource_type": share_dict["resource_type"],
+        "created_at": share_dict["created_at"],
+        "expires_at": share_dict.get("expires_at"),
+    }
+    return {"share": public_share, "resource": resource, "readonly": True}
 
 
 def _require_workspace_role(workspace_id: str, user_id: str, allowed: set[str] | None = None) -> str:

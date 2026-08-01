@@ -27,6 +27,7 @@ from backend.app.core.auth import cleanup_expired_sessions, ensure_demo_user
 from backend.app.core.db import get_db_path, init_db
 from backend.app.core.job_queue import start_job_worker, stop_job_worker
 from backend.app.services.job_handlers import register_handlers
+from backend.app.services.demo_seed import seed_demo_data
 from backend.app.core.logging_config import configure_logging
 from backend.app.core.errors import http_error_payload
 from backend.app.api.routes import (
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
     configure_logging()
     init_db()
     ensure_demo_user()
+    seed_demo_data()
     cleanup_expired_sessions()
     register_handlers()
     await start_job_worker()

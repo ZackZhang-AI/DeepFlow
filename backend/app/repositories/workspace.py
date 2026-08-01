@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from backend.app.core.db import get_connection
@@ -218,17 +219,62 @@ def get_shared_resource(token: str) -> tuple[dict | None, dict | None]:
         if share["resource_type"] == "task_report":
             resource = conn.execute(
                 """SELECT task_id, topic, report_markdown, sources_count, tokens_used,
-                          elapsed_seconds, updated_at
+                          elapsed_seconds, updated_at, is_demo
                    FROM research_tasks
                    WHERE task_id = ? AND report_markdown IS NOT NULL
                          AND report_markdown != ''""",
                 (share["resource_id"],),
             ).fetchone()
+            resource = dict(resource) if resource else None
+            if resource:
+                resource["is_demo"] = bool(resource["is_demo"])
+                resource["sources"] = _normalized_public_sources(conn, resource["task_id"])
         else:
             resource = conn.execute(
                 """SELECT artifact_id, task_id, artifact_type, title, content,
-                          metadata_json, created_at
+                          created_at,
+                          COALESCE((SELECT is_demo FROM research_tasks t
+                                    WHERE t.task_id = artifacts.task_id), 0) AS is_demo
                    FROM artifacts WHERE artifact_id = ?""",
                 (share["resource_id"],),
             ).fetchone()
-    return share, dict(resource) if resource else None
+            resource = dict(resource) if resource else None
+            if resource:
+                resource["is_demo"] = bool(resource["is_demo"])
+                resource["sources"] = []
+    return share, resource
+
+
+def _normalized_public_sources(conn, task_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT sources_json FROM research_steps WHERE task_id = ? ORDER BY step_index",
+        (task_id,),
+    ).fetchall()
+    normalized: list[dict] = []
+    seen: set[str] = set()
+    for row in rows:
+        try:
+            sources = json.loads(row["sources_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        for source in sources if isinstance(sources, list) else []:
+            if isinstance(source, str):
+                url = source.strip()
+                title = url
+                source_type = "web"
+            elif isinstance(source, dict):
+                url = str(source.get("url") or source.get("link") or "").strip()
+                title = str(
+                    source.get("title")
+                    or source.get("name")
+                    or source.get("source_name")
+                    or url
+                ).strip()
+                source_type = str(source.get("source_type") or source.get("type") or "web").strip()
+            else:
+                continue
+            if not url.lower().startswith(("http://", "https://")) or url in seen:
+                continue
+            seen.add(url)
+            normalized.append({"title": title or url, "url": url, "source_type": source_type or "web"})
+    return normalized

@@ -288,6 +288,7 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         clarification_questions=json.loads(task.get("clarification_json") or "[]"),
         knowledge_enabled=bool(task.get("knowledge_enabled")),
         knowledge_document_ids=json.loads(task.get("knowledge_document_ids_json") or "[]"),
+        is_demo=bool(task.get("is_demo")),
         retryable=bool(task.get("retryable")),
         error_code=task.get("error_code") or "",
         error_message=task.get("error_message") or "",
