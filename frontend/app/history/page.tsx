@@ -19,6 +19,7 @@ import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { Button, getButtonClasses } from "@/components/ui/Button";
 import { UsageSummaryStrip } from "@/components/history/UsageSummaryStrip";
 import type { Artifact, AuthUser, KnowledgeDocument, Report, ResearchStatus, ResearchTask, UsageSummary } from "@/lib/types";
+import { DemoBadge } from "@/components/ui/DemoBadge";
 
 type AssetTab = "tasks" | "artifacts" | "knowledge";
 type SelectedPanel = "report" | "error" | "progress" | null;
@@ -303,7 +304,10 @@ export default function HistoryPage() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-sm font-semibold text-slate-950">{task.topic}</h3>
+                              <div className="flex flex-wrap items-start gap-2">
+                                <h3 className="min-w-0 flex-1 line-clamp-2 text-sm font-semibold text-slate-950">{task.topic}</h3>
+                                {task.is_demo && <DemoBadge />}
+                              </div>
                               <p className="mt-1 text-xs text-slate-500">{formatDate(task.updated_at)}</p>
                             </div>
                             <StatusBadge status={task.status} />

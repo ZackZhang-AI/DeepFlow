@@ -18,6 +18,7 @@ import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { ProviderReadinessCard } from "@/components/research/ProviderReadinessCard";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import type { KnowledgeDocument, ProviderReadiness, ResearchStatus, ResearchTask } from "@/lib/types";
+import { DemoBadge } from "@/components/ui/DemoBadge";
 
 const STATUS_LABELS: Record<ResearchStatus, string> = {
   coordinating: "分析需求",
@@ -274,7 +275,10 @@ export default function Home() {
                   className="group min-w-0 rounded-xl border border-[var(--border)] bg-white p-4 transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-[0_8px_20px_rgba(23,32,31,0.06)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent-soft)]"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-6 text-[var(--ink)]">{task.topic}</h3>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-[var(--ink)]">{task.topic}</h3>
+                      {task.is_demo && <DemoBadge className="mt-2" />}
+                    </div>
                     <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${
                       task.status === "failed"
                         ? "border-red-200 bg-red-50 text-red-700"

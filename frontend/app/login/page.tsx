@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const demoShareToken = process.env.NEXT_PUBLIC_DEMO_SHARE_TOKEN?.trim();
 
   const title = mode === "login" ? "登录 DeepFlow" : "创建 DeepFlow 账号";
   const submitLabel = mode === "login" ? "登录并继续" : "注册并继续";
@@ -171,6 +172,20 @@ export default function LoginPage() {
                     {submitLabel}
                   </Button>
                 </form>
+
+                {demoShareToken && (
+                  <div className="mt-5 border-t border-[var(--border)] pt-5">
+                    <p className="mb-3 text-center text-xs leading-5 text-[var(--muted)]">
+                      暂不登录，也可以查看一份来源可追溯的完整研究成果。
+                    </p>
+                    <Link
+                      href={`/shared/${encodeURIComponent(demoShareToken)}`}
+                      className={getButtonClasses({ variant: "secondary", size: "lg", fullWidth: true })}
+                    >
+                      查看完整示例研究
+                    </Link>
+                  </div>
+                )}
               </>
             )}
           </div>

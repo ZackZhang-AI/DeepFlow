@@ -1,4 +1,5 @@
 import type { ResearchTask } from "@/lib/types";
+import { DemoBadge } from "@/components/ui/DemoBadge";
 
 const PHASE_LABELS: Record<string, string> = {
   coordinating: "分析研究意图",
@@ -31,6 +32,7 @@ export function ResearchStatusHeader({ task, connected }: { task: ResearchTask; 
             }`}>
               {PHASE_LABELS[phase] ?? phase}
             </span>
+            {task.is_demo && <DemoBadge />}
             {isActive && (
               <span className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
                 <span className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} aria-hidden="true" />
