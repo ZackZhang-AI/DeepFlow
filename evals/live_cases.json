@@ -1,0 +1,51 @@
+{
+  "cases": [
+    {
+      "id": "market",
+      "category": "market",
+      "name": "市场分析",
+      "topic": "分析 2026 年中国企业级 AI Agent 市场：市场结构、主要参与者、增长驱动和风险",
+      "budget_profile": "fast",
+      "max_steps": 3,
+      "repetitions": 2
+    },
+    {
+      "id": "competitive",
+      "category": "competitive",
+      "name": "竞品分析",
+      "topic": "对比 DeepSeek、通义千问和豆包大模型面向企业应用的产品能力、生态和适用场景",
+      "budget_profile": "fast",
+      "max_steps": 3,
+      "repetitions": 2
+    },
+    {
+      "id": "technical",
+      "category": "technical",
+      "name": "技术调研",
+      "topic": "调研生产级 RAG 系统的混合检索、重排、引用追溯和质量评估方案",
+      "budget_profile": "fast",
+      "max_steps": 3,
+      "repetitions": 2
+    },
+    {
+      "id": "recent",
+      "category": "recent",
+      "name": "近期事件",
+      "topic": "梳理最近 90 天 AI Agent 产品和基础设施领域的重要动态，并分析其影响",
+      "budget_profile": "standard",
+      "max_steps": 5,
+      "recency_days": 90,
+      "repetitions": 2
+    },
+    {
+      "id": "knowledge_base",
+      "category": "knowledge_base",
+      "name": "私域知识库",
+      "topic": "基于已上传的 DeepFlow 产品资料，总结产品定位、核心研究流程、能力边界和后续风险",
+      "budget_profile": "fast",
+      "max_steps": 3,
+      "prefer_knowledge_base": true,
+      "repetitions": 2
+    }
+  ]
+}

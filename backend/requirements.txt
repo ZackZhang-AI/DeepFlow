@@ -5,4 +5,4 @@ uvicorn[standard]>=0.30.0
 aiosqlite>=0.20.0
 
 # 复用 CLI 依赖（搜索、模型等）
-../requirements.txt
+-r ../requirements.txt

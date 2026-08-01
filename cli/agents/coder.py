@@ -25,6 +25,7 @@ async def process_step(
     step_index: int,
     total_steps: int,
     locale: str = "zh-CN",
+    previous_findings: list[ResearchFinding] | None = None,
 ) -> tuple[ResearchFinding, int, int]:
     """
     执行单个数据处理步骤。
@@ -42,9 +43,13 @@ async def process_step(
     total_completion = 0
     system_prompt = load_prompt("coder")
     artifacts: list[str] = []
+    context = _format_previous_findings(previous_findings or [])
 
     user_message = f"""## 数据处理任务
 {step.description}
+
+## 已完成研究发现
+{context}
 
 ## 当前时间
 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -53,6 +58,14 @@ async def process_step(
 {"中文" if locale == "zh-CN" else "English"}
 
 请按照 Coder Agent 的工作流程：分析问题 → 编写代码 → 执行 → 分析结果。"""
+    user_message += """
+
+严格要求：
+- 只能围绕“数据处理任务”和“已完成研究发现”分析
+- 不要引入未被要求的 ROI、财务预测、营销转化等无关场景
+- 不要保存图片或文件，不要调用 plt.savefig；使用 print 输出表格和统计结果
+- 保留前序研究中的趋势名称、产品名称和指标名称，不要重命名为 Agent A/B 或方案A/B
+- 如果缺少真实定量数据，请显式说明“缺少真实定量数据”，并仅用最小示例数据演示计算方法"""
 
     max_attempts = Config.MAX_RETRIES + 1  # 1 次初始 + N 次重试
     code = ""
@@ -147,6 +160,28 @@ async def process_step(
     )
 
     return finding, total_prompt, total_completion
+
+
+def _format_previous_findings(findings: list[ResearchFinding]) -> str:
+    """把前序研究发现压缩成 Coder 可用的数据上下文。"""
+    if not findings:
+        return "暂无前序研究发现。请不要编造数据；如果缺少输入数据，说明限制并给出可复现的示例分析。"
+
+    parts: list[str] = []
+    for i, finding in enumerate(findings, 1):
+        refs = "\n".join(f"- {r.title}: {r.url}" for r in finding.references[:8])
+        parts.append(
+            f"""### 前序步骤 {i}: {finding.step_title}
+问题: {finding.problem_statement}
+结论: {finding.conclusion}
+发现摘要:
+{finding.findings_markdown[:2500]}
+
+可用来源:
+{refs if refs else '- 无外部来源'}
+"""
+        )
+    return "\n\n".join(parts)
 
 
 def _extract_code_block(text: str) -> str:

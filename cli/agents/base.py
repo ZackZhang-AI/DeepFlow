@@ -3,6 +3,7 @@ Agent 基类 — 封装 LLM 调用
 """
 
 import json
+import asyncio
 import time
 from typing import Optional, Type, TypeVar
 from openai import OpenAI
@@ -59,15 +60,17 @@ class LLMProvider:
         """
         client, model_id = LLMProvider.get_client(model)
 
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[
+        request = {
+            "model": model_id,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        _apply_deepseek_options(request, model_id)
+        response = await asyncio.to_thread(client.chat.completions.create, **request)
 
         content = response.choices[0].message.content or ""
         prompt_tokens = response.usage.prompt_tokens if response.usage else 0
@@ -123,15 +126,17 @@ class LLMProvider:
 {schema_json}
 ```"""
 
-            response = client.chat.completions.create(
-                model=model_id,
-                messages=[
+            request = {
+                "model": model_id,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": full_message},
                 ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            _apply_deepseek_options(request, model_id)
+            response = await asyncio.to_thread(client.chat.completions.create, **request)
 
             raw = response.choices[0].message.content or ""
             prompt_tokens = response.usage.prompt_tokens if response.usage else 0
@@ -151,3 +156,13 @@ class LLMProvider:
                 continue
 
         return None, raw, prompt_tokens, completion_tokens
+
+
+def _apply_deepseek_options(request: dict, model: str) -> None:
+    if not model.startswith("deepseek-v4"):
+        return
+    request["extra_body"] = {
+        "thinking": {
+            "type": "enabled" if Config.DEEPSEEK_THINKING_ENABLED else "disabled"
+        }
+    }

@@ -3,8 +3,31 @@ API 请求/响应 Schema (Pydantic)
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8, max_length=256)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+class UserResponse(BaseModel):
+    user_id: str
+    username: str
+    created_at: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: str
+    user: UserResponse
 
 
 # ============================================================
@@ -15,7 +38,48 @@ class CreateResearchRequest(BaseModel):
     """创建研究任务"""
     topic: str = Field(..., min_length=1, max_length=500, description="研究主题")
     locale: str = Field(default="zh-CN", description="语言")
+    budget_profile: Literal["fast", "standard", "deep"] = "fast"
     max_steps: int = Field(default=5, ge=2, le=8, description="最大步骤数")
+    search_domains: list[str] = Field(default_factory=list, description="优先或限定搜索域名")
+    recency_days: Optional[int] = Field(default=None, ge=1, le=3650, description="优先检索最近 N 天内容")
+    knowledge_enabled: bool = False
+    knowledge_document_ids: list[str] = Field(default_factory=list)
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+class TaskBudget(BaseModel):
+    profile: str
+    max_steps: int
+    max_search_calls_per_step: int
+    max_crawl_pages_per_step: int
+    max_tokens: int
+    report_reserve_tokens: int
+    search_depth: str
+
+
+class TaskUsage(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_rmb: float = 0.0
+    search_calls: int = 0
+    crawl_calls: int = 0
+    search_credits: int = 0
+    planner_model: str = ""
+    researcher_model: str = ""
+    reporter_model: str = ""
+    pricing_version: str = ""
+
+
+class UsageSummary(BaseModel):
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    failed_tasks: int = 0
+    total_cost_rmb: float = 0.0
+    avg_cost_rmb: float = 0.0
+    total_tokens: int = 0
+    total_search_credits: int = 0
 
 
 class ResearchTaskResponse(BaseModel):
@@ -27,14 +91,51 @@ class ResearchTaskResponse(BaseModel):
     current_step: int = 0
     total_steps: int = 0
     report_id: Optional[str] = None
+    clarification_questions: list[str] = Field(default_factory=list)
+    knowledge_enabled: bool = False
+    knowledge_document_ids: list[str] = Field(default_factory=list)
+    is_demo: bool = False
+    phase: str = ""
+    progress: float = 0.0
+    retryable: bool = False
+    error_code: str = ""
+    error_message: str = ""
+    last_event_seq: int = 0
+    plan: Optional[dict] = None
+    budget: TaskBudget
+    usage: TaskUsage
+    budget_percent: float = 0.0
     created_at: str
     updated_at: str
+
+
+class ClarificationAnswerRequest(BaseModel):
+    """提交澄清问题回答，并启动计划生成。"""
+    answers: dict[str, str] = Field(default_factory=dict)
 
 
 class ConfirmPlanRequest(BaseModel):
     """确认/修改研究计划"""
     action: str = Field(..., description="accept | edit | reject")
     modified_steps: Optional[list[dict]] = Field(default=None, description="修改后的步骤")
+
+
+class AgentRunResponse(BaseModel):
+    """Agent 执行日志。"""
+    run_id: str
+    task_id: str
+    user_id: str = ""
+    agent_name: str
+    phase: str
+    status: str
+    input_summary: str = ""
+    output_summary: str = ""
+    tool_calls_json: str = "[]"
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    elapsed_seconds: float = 0.0
+    error: str = ""
+    created_at: str
 
 
 class ResearchEvent(BaseModel):
@@ -60,10 +161,39 @@ class ReportResponse(BaseModel):
     created_at: str
 
 
+class SaveReportRequest(BaseModel):
+    """保存报告编辑"""
+    content_markdown: str = Field(..., min_length=1, description="完整 Markdown 报告")
+    change_note: str = Field(default="手动编辑", description="版本说明")
+
+
 class RewriteRequest(BaseModel):
     """报告重写请求"""
-    section: str = Field(..., description="要重写的报告部分")
+    section: str = Field(default="", description="要重写的报告部分")
     instruction: str = Field(..., description="重写指令")
+
+
+class KnowledgeDocumentRequest(BaseModel):
+    """新增知识库文档"""
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1)
+    source_name: str = ""
+    source_type: str = "text"
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+class KnowledgeDocumentResponse(BaseModel):
+    doc_id: str
+    title: str
+    source_name: str = ""
+    source_type: str = "text"
+    content_length: int = 0
+    status: str = "pending"
+    chunk_count: int = 0
+    error_message: str = ""
+    created_at: str
+    updated_at: str
 
 
 # ============================================================

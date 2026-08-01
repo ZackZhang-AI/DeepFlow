@@ -19,23 +19,38 @@ class Config:
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
     DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-v2")
 
     # ---- 搜索 API ----
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
     SERPAPI_API_KEY: str = os.getenv("SERPAPI_API_KEY", "")
 
     # ---- 模型分配 ----
-    PLANNER_MODEL: str = os.getenv("PLANNER_MODEL", "deepseek-chat")
-    RESEARCHER_MODEL: str = os.getenv("RESEARCHER_MODEL", "deepseek-chat")
-    REPORTER_MODEL: str = os.getenv("REPORTER_MODEL", "deepseek-chat")
+    PLANNER_MODEL: str = os.getenv("PLANNER_MODEL", "deepseek-v4-flash")
+    RESEARCHER_MODEL: str = os.getenv("RESEARCHER_MODEL", "deepseek-v4-flash")
+    REPORTER_MODEL: str = os.getenv("REPORTER_MODEL", "deepseek-v4-pro")
     REPORTER_FALLBACK_MODEL: str = os.getenv("REPORTER_FALLBACK_MODEL", "qwen-max")
+    DEEPSEEK_THINKING_ENABLED: bool = os.getenv(
+        "DEEPSEEK_THINKING_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
 
     # ---- 研究参数 ----
     MAX_STEPS: int = int(os.getenv("MAX_STEPS", "5"))
     MAX_SEARCH_CALLS: int = int(os.getenv("MAX_SEARCH_CALLS", "4"))
     MAX_CRAWL_PAGES: int = int(os.getenv("MAX_CRAWL_PAGES", "4"))
-    MAX_TOKEN_BUDGET: int = int(os.getenv("MAX_TOKEN_BUDGET", "100000"))
+    MAX_TOKEN_BUDGET: int = int(os.getenv("MAX_TOKEN_BUDGET", "160000"))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "2"))
+    KNOWLEDGE_TOP_K: int = int(os.getenv("KNOWLEDGE_TOP_K", "5"))
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
+    KNOWLEDGE_CANDIDATE_K: int = int(os.getenv("KNOWLEDGE_CANDIDATE_K", "20"))
+    KNOWLEDGE_SCORE_THRESHOLD: float = float(os.getenv("KNOWLEDGE_SCORE_THRESHOLD", "0.20"))
+    KNOWLEDGE_VECTOR_WEIGHT: float = float(os.getenv("KNOWLEDGE_VECTOR_WEIGHT", "0.70"))
+    KNOWLEDGE_KEYWORD_WEIGHT: float = float(os.getenv("KNOWLEDGE_KEYWORD_WEIGHT", "0.30"))
+    KNOWLEDGE_CHUNK_SIZE: int = int(os.getenv("KNOWLEDGE_CHUNK_SIZE", "1000"))
+    KNOWLEDGE_CHUNK_OVERLAP: int = int(os.getenv("KNOWLEDGE_CHUNK_OVERLAP", "200"))
+    ENABLE_KB_RERANK: bool = os.getenv("ENABLE_KB_RERANK", "false").lower() in ("1", "true", "yes", "on")
+    KB_RERANK_MODEL: str = os.getenv("KB_RERANK_MODEL", "gte-rerank-v2")
+    KB_RERANK_TOP_N: int = int(os.getenv("KB_RERANK_TOP_N", "5"))
 
     # ---- 路径 ----
     PROMPTS_DIR: Path = Path(__file__).resolve().parent.parent / "prompts"

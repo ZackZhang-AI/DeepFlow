@@ -1,143 +1,341 @@
-# DeepFlow — AI 深度研究平台
+# DeepFlow
 
-输入一个研究主题，多 Agent 协作自动完成 **资料收集 → 分析 → 报告撰写**，5 分钟产出带 50+ 真实引用的结构化研究报告。
+DeepFlow 是一个面向深度研究场景的多 Agent AI 工作台。用户输入研究主题后，系统会完成澄清、规划、资料检索、私域知识库召回、代码分析、报告生成与成果物导出，并提供个人资产管理、团队协作、研究模板和配置式 Agent 工作流。
 
-## 核心能力
+当前版本严格围绕 `AI产品需求文档.pdf` 落地，继续保持轻量架构：FastAPI + SQLite + Next.js，不引入 Milvus、MinIO、Celery、LangGraph 或额外企业平台能力。
 
-- **多 Agent 协作**：Coordinator（意图分析）→ Planner（计划生成）→ Researcher（联网搜索）→ Coder（数据分析）→ Reporter（报告撰写）
-- **实时搜索**：自动检索 + 网页抓取，所有引用来自真实来源
-- **代码执行**：安全沙箱运行 Python（numpy/pandas/matplotlib），自动计算和可视化
-- **6 种报告风格**：通用 / 学术 / 科普 / 新闻 / 社交媒体 / 投资分析
-- **成果物生成**：播客脚本（双人对话）、PPT 幻灯片
-- **文本工具**：润色 / 扩展 / 精简
+## 产品预览
+
+![DeepFlow 深度研究工作台](docs/images/readme-workbench.png)
+
+登录后的研究工作台集中展示研究主题、来源范围、研究深度与报告生成入口。
+
+## 公网演示模式
+
+DeepFlow 支持两种互不混淆的演示入口：
+
+- **公开样例**：无需登录，通过 `/shared/deepflow-showcase` 查看预置的只读研究报告，不调用 DeepSeek、Tavily 或 embedding 服务。
+- **私密演示账号**：用于面试现场展示真实研究工作台。公网密码只保存在 Render Secret，不写入仓库、README 或前端环境变量。
+
+Render Free 可能休眠，首次打开时需要等待后端唤醒。免费实例的本地 SQLite 数据在重启、重新部署或实例回收后可能丢失；启用 `DEMO_SEED_ENABLED=true` 后，固定样例会在启动时幂等重建，但访客创建的真实任务、上传资料和历史记录**不保证持久化**。
+
+## 已实现能力
+
+### 研究主流程
+
+- 用户注册、登录、会话鉴权。
+- 创建研究任务，支持澄清问题、研究计划生成、计划确认。
+- 研究任务通过 SQLite 持久化队列执行，支持进程重启恢复、失败阶段重试和 SSE 事件重放。
+- 多 Agent 流程：Coordinator、Planner、Researcher、Coder、Reporter、Artifact。
+- SSE 进度事件与 Agent Trace。
+- 资源权限：个人资源按用户隔离；团队资源按 Workspace 的 owner/editor/viewer 角色访问。
+- 成本与预算控制字段：搜索次数、抓取次数、token、耗时、费用、错误记录。
+
+### 私域知识库与 RAG
+
+- 支持上传/创建 PDF、TXT、Markdown 文档。
+- 文档状态：`pending | processing | ready | failed`。
+- 文档解析、分块、页码和 metadata 保留。
+- embedding 入库到 SQLite。
+- 默认 `EMBEDDING_PROVIDER=auto`：配置 DashScope Key 时使用云 embedding，否则自动使用零成本本地 hashing embedding。
+- hybrid 检索：向量召回 + 关键词召回 + 可选 rerank。
+- 新建研究时可显式启用知识库并选择文档，任务只召回所选且状态为 `ready` 的资料。
+- 研究报告引用统一使用 `kb://{doc_id}#{chunk_id}`。
+- 报告中的知识库引用可点击定位到具体 chunk 和页码。
+- 前端知识库面板支持查看文档状态、错误原因、chunk、页码、分数和召回模式。
+
+### Coder Agent 与 Python 沙箱
+
+- 支持 Python 代码生成与 Docker 沙箱执行；公共 API 不允许降级到本机 subprocess。
+- 执行超时、危险操作拦截、输出长度限制。
+- 错误捕获与简单自动修复入口。
+- Trace 记录代码工具调用、耗时、错误和结果摘要。
+
+### 报告与成果物
+
+- Markdown 报告生成、查看和编辑。
+- 报告版本管理：保存版本、查看版本、恢复版本。
+- 文本处理：润色、扩写、缩写、指定章节改写。
+- 导出：Markdown、PDF。
+- 成果物：PPTX、播客脚本、可选本机 TTS 接口。
+- 个人资产中心展示研究任务、报告、知识库、PPTX、播客等资产。
+
+### MCP 工具管理
+
+- 内置工具注册表：
+  - `web_search`
+  - `knowledge_search`
+  - `python_sandbox`
+- 工具列表、启用/禁用、测试调用。
+- 测试结果包含输入摘要、输出摘要、耗时、错误和原始输出。
+- 前端 `/tools` 工具管理页。
+
+### 团队协作
+
+- Workspace 与 Project。
+- 权限角色：`owner | editor | viewer`。
+- owner 唯一且不可被普通成员变更；editor 可创建和编辑，viewer 严格只读。
+- 团队成员可共同访问绑定到 Workspace/Project 的任务、知识库、报告版本和成果物。
+- 报告评论。
+- 只读共享链接。
+- 个人模式兼容，不强制创建团队空间。
+- 前端 `/workspaces` 与 `/shared/[token]` 页面。
+
+### 研究模板
+
+- 模板 CRUD。
+- 模板字段：名称、分类、描述、默认澄清问题、默认计划结构、推荐搜索域、报告风格。
+- 支持从模板创建研究任务。
+- 前端 `/templates` 页面。
+
+### 自定义 Agent 工作流
+
+- 基于当前 Python 状态机的配置式工作流，不迁移 LangGraph。
+- 支持节点：Planner、Researcher、Coder、Reporter、Artifact、Human Feedback、MCP Tool。
+- 支持顺序执行、失败重试、预算限制、Human Feedback 暂停/继续、运行记录和节点 Trace。
+- 前端 `/workflows` 页面。
+
+## 技术栈
+
+| 层级 | 选择 |
+| --- | --- |
+| 后端 | Python, FastAPI, SQLite, Pydantic |
+| 前端 | Next.js 16, React, TypeScript, Tailwind CSS |
+| Agent 编排 | Python asyncio 状态机 |
+| 私域知识库 | SQLite 存储 chunk 和 embedding |
+| 搜索 | Tavily 或兼容搜索 Provider |
+| 模型 | DeepSeek V4 Flash/Pro；保留 DashScope/OpenAI 兼容 Provider |
+| 沙箱 | Docker 隔离执行；公共 API 禁止回退到本机 subprocess |
+| 导出 | Markdown, PDF, PPTX, 播客脚本 |
+
+## 低成本研究模式
+
+研究任务只能选择固定预算档位，后端会持久化实际限制并在每次模型、搜索和抓取调用前检查余额：
+
+| 档位 | 步骤 | 每步搜索 | 每步抓取 | Token 上限 | Tavily |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 快速 | 3 | 1 | 1 | 50,000（报告预留 10,000） | basic |
+| 标准 | 5 | 2 | 2 | 90,000（报告预留 20,000） | basic |
+| 深度 | 8 | 3 | 3 | 160,000（报告预留 35,000） | advanced |
+
+系统会优先保留 Reporter 的额度。研究步骤接近阶段上限时，会使用已经完成的研究发现提前进入报告生成，不再因继续扩展资料而丢失最终报告。
+
+- Planner、Researcher 默认使用 `deepseek-v4-flash`。
+- 快速报告使用 Flash，标准/深度报告使用 `deepseek-v4-pro`。
+- DeepSeek V4 显式关闭 thinking，费用按版本化价格表估算。
+- 任务页展示 token、人民币预估费用、搜索/抓取次数和 Tavily credits。
+- `402` 会立即标记为 `provider_balance_exhausted`，不会自动重试。
 
 ## 快速开始
 
-### 前提条件
-
-- Python 3.12+
-- DeepSeek API Key（[platform.deepseek.com](https://platform.deepseek.com)）
-- Tavily API Key（[tavily.com](https://tavily.com)，免费 1000 credits/月）
-
-### 安装
+### 1. 安装依赖
 
 ```bash
 git clone https://github.com/ZackZhang-AI/DeepFlow.git
 cd DeepFlow
 
-# 安装依赖（国内使用阿里云镜像）
-pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+cd frontend
+npm install
 ```
 
-### 配置
+### 2. 配置环境变量
+
+复制 `.env.example` 为 `.env`，按需填写模型、搜索、embedding 与 rerank 配置。
 
 ```bash
-cp .env.example .env
-# 编辑 .env 填入你的 API Key：
-#   DEEPSEEK_API_KEY=sk-xxx
-#   TAVILY_API_KEY=tvly-xxx
+copy .env.example .env
 ```
 
-### CLI 运行
+最小可运行配置通常包括：
 
-```bash
-# 单次研究
-python -m cli.main "分析 2026 年 AI Agent 市场发展趋势"
-
-# 交互模式
-python -m cli.main --interactive
-
-# 跳过计划确认
-python -m cli.main "量子计算进展" -y --max-steps 3
-
-# 评测 Planner
-python -m evals.runner --agent planner
+```env
+DEEPSEEK_API_KEY=sk-...
+TAVILY_API_KEY=tvly-...
 ```
 
-### Web 运行
+私域知识库默认无需额外 Key：`EMBEDDING_PROVIDER=auto` 会在没有 DashScope Key 时使用本地 embedding。若需要更强的语义召回或 rerank，再配置 `DASHSCOPE_API_KEY`。
+
+### 私域知识库使用流程
+
+1. 登录后在研究首页展开“私域知识库”。
+2. 上传 PDF、TXT、Markdown，或直接粘贴文本。
+3. 等待状态变为“可检索”，可先输入问题测试召回结果。
+4. 在研究范围中开启“使用私域知识库”，勾选本次研究要使用的资料。
+5. 创建并执行研究；知识库来源会以 `kb://{doc_id}#{chunk_id}` 出现在来源检查中，可定位到原始 chunk 和页码。
+
+### 3. 启动后端
 
 ```bash
-# 终端 1：启动后端
 python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 终端 2：启动前端
-cd frontend && npm install && npm run dev
-
-# 浏览器打开 http://localhost:3000
 ```
 
-## 研究流程
+后端服务与接口文档：
 
+| 服务 | 地址 |
+| --- | --- |
+| API | `http://localhost:8000` |
+| Swagger | `http://localhost:8000/docs` |
+| 健康检查 | `http://localhost:8000/api/health` |
+| Provider 配置检查 | `http://localhost:8000/api/system/readiness` |
+| Provider 真实探测 | `http://localhost:8000/api/system/readiness?probe=true` |
+
+### 4. 启动前端
+
+```bash
+cd frontend
+npm run dev -- --port 3001
 ```
-用户输入主题 → Coordinator(意图分类) → Planner(生成3-5步计划)
-                                              ↓ 用户确认
-        Reporter(6段结构报告) ← Researcher×N(搜索+抓取+总结) + Coder(沙箱执行)
-              ↓
-    Artifact Agents: 播客脚本 / PPT幻灯片 / 文本润色扩展精简
+
+浏览器打开：
+
+```text
+http://localhost:3001
 ```
 
-## 成本
+当前项目固定使用 `3001`，避免与其他 DeepFlow 工作目录占用的 `3000` 端口混淆。若使用其他端口，请同步将其加入 `.env` 的 `CORS_ORIGINS`。
 
-| 研究类型 | 步骤 | 时间 | 费用 |
-|---------|------|------|------|
-| 快速 | 2-3 步 | ~3 分钟 | <¥0.30 |
-| 标准 | 4-5 步 | ~8 分钟 | ~¥0.80 |
-| 深度 | 5-8 步 | ~15 分钟 | ~¥1.50 |
+### 5. 默认本地账号
 
-使用 DeepSeek V4-Pro，单次研究约 ¥0.80-1.10（≈$0.12-0.16）。
+首次启动后端时，系统会根据 `.env` 自动创建本地演示账号：
 
-## 技术栈
+```text
+账号：deepflow
+密码：DeepFlow2026!
+```
 
-| 层 | 选择 |
-|---|------|
-| AI 模型 | DeepSeek V4-Pro / V4-Flash |
-| 后端 | Python FastAPI + SQLite |
-| 前端 | Next.js 16 + React + TypeScript + Tailwind CSS |
-| 搜索 | Tavily Search API |
-| 沙箱 | 子进程隔离（生产环境可选 Docker） |
-| 编排 | 自研 asyncio 状态机 |
+该账号只用于本地开发和功能演示，不是公网账号。公开部署必须在 Render Secret 中单独设置强 `DEMO_PASSWORD`，并保持 `ALLOW_PUBLIC_REGISTRATION=false`。演示账号只在首次不存在时创建；修改密码后如需更新已有账号，请重新注册新账号或清理本地演示数据库。
+
+## 主要页面
+
+| 页面 | 说明 |
+| --- | --- |
+| `/login` | 登录与注册 |
+| `/` | 新建研究与最近任务 |
+| `/research/[taskId]` | 可恢复的研究详情、计划、进度、来源和报告工作区 |
+| `/history` | 个人资产中心 |
+| `/tools` | MCP 工具管理 |
+| `/templates` | 研究模板 |
+| `/workflows` | 自定义 Agent 工作流 |
+| `/workspaces` | 团队空间与协作 |
+| `/shared/[token]` | 只读共享页 |
+
+## API 概览
+
+| 模块 | 代表接口 |
+| --- | --- |
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
+| System | `GET /api/system/readiness?probe=true` |
+| Research | `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/retry`, `GET /api/research-tasks/{id}/events?after_seq=` |
+| Research | `POST /api/research-tasks`, `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/confirm-plan` |
+| Usage | `GET /api/research-tasks/usage-summary` |
+| Report | `GET /api/reports/{task_id}`, `PATCH /api/reports/{task_id}`, `GET /api/reports/{task_id}/download` |
+| Report Version | `GET /api/reports/{task_id}/versions`, `POST /api/reports/{task_id}/versions/{version_id}/restore` |
+| Knowledge | `POST /api/knowledge-documents/upload`, `GET /api/knowledge-documents/search`, `GET /api/knowledge-documents/{doc_id}/chunks` |
+| Artifacts | `POST /api/artifacts/ppt`, `POST /api/artifacts/podcast`, `GET /api/artifacts/download/{artifact_id}` |
+| Tools | `GET /api/tools`, `PATCH /api/tools/{tool_id}`, `POST /api/tools/{tool_id}/test` |
+| Workspaces | `GET /api/workspaces`, `POST /api/workspaces`, `POST /api/workspaces/{id}/members` |
+| Templates | `GET /api/templates`, `POST /api/templates`, `POST /api/templates/{id}/start-research` |
+| Workflows | `GET /api/workflows`, `POST /api/workflows`, `POST /api/workflows/{id}/runs` |
+
+## 验证命令
+
+本轮实现已通过以下验证：
+
+```bash
+python -m pytest backend/tests -q
+python -m compileall cli backend evals
+npm.cmd run lint
+npm.cmd run build
+npm.cmd run test:e2e
+```
+
+GitHub Actions 执行同一组离线检查。前端 Playwright 测试通过路由 Mock 提供 API 响应，CI 不配置 `DEEPSEEK_API_KEY`、`TAVILY_API_KEY` 或其他真实 Provider Key，因此不会产生模型或搜索费用。付费 Live Eval 必须由开发者显式设置 `RUN_LIVE_E2E=1` 并传入 `--live`，不属于 CI 和零成本部署验收。
+
+真实质量评估默认是 dry-run，不会调用付费 API：
+
+```bash
+python -m evals.live_eval --formal
+```
+
+只有同时设置 `RUN_LIVE_E2E=1` 并显式传入 `--live` 才会执行真实研究。正式计划固定为 8 次快速、2 次标准，包含重试最多 12 次；原始结果写入已忽略的 `evals/results/`。
+
+2026-07-28 的受控评估消耗 12 次真实任务，模型预计费用 ¥0.2813、Tavily 38 credits。三个最终快速样本完成且引用有效率 100%；整体完成率未达到 90% 目标，详见 `evals/examples/live_eval_summary_2026-07-28.md`。达到硬上限后未继续付费重测。
+
+## 当前边界
+
+- 当前默认使用 SQLite，适合原型、MVP 和单机验证；大规模生产部署前建议评估 PostgreSQL/pgvector。
+- 工具启用状态按用户持久化到 SQLite。
+- 私域知识库已具备 PRD 所需检索闭环，但未引入 Milvus、MinIO、Celery、RAGAS 等 PRD 外企业栈。
+- 工作流为顺序配置式可运行版本；`edges` 尚不参与条件分支执行。
+- 公共部署默认 `DISABLE_SANDBOX_TOOL=true`；只有 Docker readiness 正常时才应开启 Coder。
+- 云 TTS、计费、企业 SSO、复杂审批流不在当前 PRD 实现范围内。
 
 ## 项目结构
 
-```
+```text
 DeepFlow/
-├── cli/                      # Agent 引擎（代码可脱离后端运行）
-│   ├── agents/               # Coordinator / Planner / Researcher / Coder / Reporter
-│   │   └── artifacts/        # 播客 / PPT / 文本工具 Agent
-│   ├── tools/                # 搜索 / 抓取 / 沙箱
-│   ├── main.py               # CLI 入口
-│   └── state_machine.py      # 研究流程状态机
-├── backend/                  # FastAPI 后端
+├── backend/                 # FastAPI 后端
 │   └── app/
-│       ├── api/routes/       # research / events(SSE) / report / artifacts
-│       ├── core/             # SQLite 数据库 / SSE 事件管理
-│       └── services/         # 后台研究任务执行
-├── frontend/                 # Next.js Web 工作台
-│   ├── app/                  # 主页 + 历史页
-│   └── components/           # ReportView / Timeline / StyleSelector / ArtifactTools
-├── prompts/                  # Agent 提示词（版本化 @v1, @v2）
-│   └── artifacts/            # 播客 / PPT / 文本工具 Prompt
-├── evals/                    # Eval Cases + Runner
-└── output/                   # 研究报告输出
+│       ├── api/routes/      # auth, research, report, artifacts, knowledge, tools, workspaces, templates, workflows
+│       ├── core/            # 连接迁移、鉴权、访问策略、事件与任务队列
+│       ├── repositories/    # 按领域拆分的 SQLite 数据访问层
+│       └── services/        # research, knowledge, embedding, tools
+├── cli/                     # Agent 引擎与状态机
+│   ├── agents/              # Planner, Researcher, Coder, Reporter 等
+│   └── tools/               # web_search, sandbox
+├── frontend/                # Next.js 前端
+│   ├── app/                 # 页面路由
+│   ├── components/          # 报告、知识库、成果物、Trace 等组件
+│   ├── e2e/                 # Playwright 研究闭环与响应式回归
+│   └── lib/                 # API wrapper 与类型
+├── prompts/                 # Agent Prompt
+├── evals/                   # Eval 用例和 runner
+└── backend/tests/           # smoke 测试
 ```
-
-## API 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/research-tasks` | 创建研究任务 |
-| GET | `/api/research-tasks/{id}` | 查询任务状态 |
-| GET | `/api/research-tasks` | 历史任务列表 |
-| GET | `/api/research-tasks/{id}/events` | SSE 实时进度流 |
-| GET | `/api/reports/{id}` | 获取报告 |
-| GET | `/api/reports/{id}/download` | 下载 Markdown |
-| POST | `/api/artifacts/restyle` | 切换报告风格 |
-| POST | `/api/artifacts/podcast` | 生成播客脚本 |
-| POST | `/api/artifacts/ppt` | 生成 PPT Markdown |
-| POST | `/api/artifacts/prose/improve` | 文本润色 |
-| POST | `/api/artifacts/prose/expand` | 文本扩展 |
-| POST | `/api/artifacts/prose/shorten` | 文本精简 |
 
 ## License
 
 MIT
+
+## 零成本公网部署
+
+### 1. 部署 Render 后端
+
+1. 在 Render 选择 **New > Blueprint**，连接此仓库。根目录的 `render.yaml` 会创建 Free Python Web Service。
+2. 创建时填写所有标记为 `sync: false` 的变量：
+   - `CORS_ORIGINS`：Vercel 最终域名，例如 `https://deepflow-demo.vercel.app`，不要填写 `*`。
+   - `DEMO_PASSWORD`：公网私密演示账号的强密码，不得使用上文公开的本地密码。
+   - `DEEPSEEK_API_KEY`、`TAVILY_API_KEY`：只有私密账号需要执行真实研究时才填写；只展示公开样例时可留空。
+3. Blueprint 已固定启用样例种子、关闭公开注册和 Python 沙箱，并将真实研究限制为每小时 3 次。
+4. 部署后访问 `https://<render-service>/api/health`，确认返回 `status: ok`。
+
+Render 启动命令由 Blueprint 固定为：
+
+```bash
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+```
+
+### 2. 部署 Vercel 前端
+
+1. 在 Vercel 导入同一仓库，将 **Root Directory** 设置为 `frontend/`。
+2. 保持 Framework Preset 为 Next.js；`frontend/vercel.json` 只声明兼容的安装和构建命令，不硬编码后端域名。
+3. 配置环境变量：
+
+```env
+NEXT_PUBLIC_API_URL=https://<render-service>
+NEXT_PUBLIC_DEMO_SHARE_TOKEN=deepflow-showcase
+```
+
+4. 首次部署取得 Vercel 正式域名后，将其精确写回 Render 的 `CORS_ORIGINS` 并重新部署后端。
+5. 验收公开路径 `/shared/deepflow-showcase` 和私密登录流程；验收期间不要调用 `readiness?probe=true`，也不要启动 Live Eval。
+
+### 部署边界
+
+- Vercel Hobby 与 Render Free 用于个人求职演示，部署现金成本为 0，免费额度或平台规则变化仍可能导致服务暂停。
+- Render Free 的 SQLite 是易失存储。演示样例可由种子重建，真实研究任务、知识库上传、报告编辑和用户历史不保证持久化。
+- 如需可靠保存真实数据，应升级为持久磁盘并设置 `DEEPFLOW_DB_PATH=/var/data/deepflow.db`，或迁移到持久数据库；这不属于零成本方案。
+- 公开访客只使用只读分享页；公开注册保持关闭，Python 沙箱保持禁用，Provider Key 仅存于 Render Secret。

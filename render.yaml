@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: deepflow-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DEMO_SEED_ENABLED
+        value: "true"
+      - key: DEMO_SHARE_TOKEN
+        value: deepflow-showcase
+      - key: DEMO_USERNAME
+        value: interviewer
+      - key: ALLOW_PUBLIC_REGISTRATION
+        value: "false"
+      - key: DISABLE_SANDBOX_TOOL
+        value: "true"
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: "3600"
+      - key: RESEARCH_TASK_RATE_LIMIT_PER_HOUR
+        value: "3"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DEMO_PASSWORD
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false

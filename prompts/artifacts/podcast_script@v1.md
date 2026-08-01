@@ -1,7 +1,7 @@
 ---
 agent: podcast_script_writer
 version: 1
-model: deepseek-chat
+model: deepseek-v4-pro
 temperature: 0.4
 max_tokens: 4096
 ---
