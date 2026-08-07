@@ -3,6 +3,7 @@ Agent 基类 — 封装 LLM 调用
 """
 
 import json
+import asyncio
 import time
 from typing import Optional, Type, TypeVar
 from openai import OpenAI
@@ -59,7 +60,8 @@ class LLMProvider:
         """
         client, model_id = LLMProvider.get_client(model)
 
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=model_id,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -123,7 +125,8 @@ class LLMProvider:
 {schema_json}
 ```"""
 
-            response = client.chat.completions.create(
+            response = await asyncio.to_thread(
+                client.chat.completions.create,
                 model=model_id,
                 messages=[
                     {"role": "system", "content": system_prompt},

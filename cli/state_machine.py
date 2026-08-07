@@ -77,6 +77,7 @@ class ResearchStateMachine:
                 max_steps=Config.MAX_STEPS,
             )
             self._add_tokens(Config.PLANNER_MODEL, pt, ct, 0.004)  # V4-Pro ¥0.004/1K tokens average
+            self._ensure_token_budget()
             self.plan = plan
 
             await self._emit_progress("plan_created", f"研究计划已生成: {plan.title}")
@@ -118,8 +119,12 @@ class ResearchStateMachine:
                     finding, pt, ct = await process_step(
                         step=step, step_index=step_num,
                         total_steps=len(plan.steps), locale=self.locale,
+                        previous_findings=self.findings,
                     )
                     self._add_tokens(Config.RESEARCHER_MODEL, pt, ct, 0.004)
+                self.usage.search_calls += finding.search_calls
+                self.usage.crawl_calls += finding.crawl_calls
+                self._ensure_token_budget()
                 self.findings.append(finding)
 
                 await self._emit_progress(
@@ -133,6 +138,7 @@ class ResearchStateMachine:
                 return self._build_record(run_id)
 
             # ---- Phase 4: Reporting ----
+            self._ensure_token_budget()
             self.state = ResearchState.REPORTING
             await self._emit_progress("report_started", "正在生成研究报告...")
 
@@ -142,6 +148,7 @@ class ResearchStateMachine:
                 locale=self.locale,
             )
             self._add_tokens(Config.REPORTER_MODEL, pt, ct, 0.008)  # Reporter 可能用更贵模型
+            self._ensure_token_budget()
             self.report_markdown = report
 
             # ---- Done ----
@@ -165,6 +172,15 @@ class ResearchStateMachine:
         # 粗略费用估算
         total_1k = (prompt + completion) / 1000.0
         self.usage.cost_estimate_rmb += total_1k * price_per_1k
+
+    def _ensure_token_budget(self):
+        """超过预算时中断，防止任务无声烧钱。"""
+        if Config.MAX_TOKEN_BUDGET <= 0:
+            return
+        if self.usage.total_tokens > Config.MAX_TOKEN_BUDGET:
+            raise RuntimeError(
+                f"Token 预算超限: {self.usage.total_tokens} > {Config.MAX_TOKEN_BUDGET}"
+            )
 
     async def _emit_progress(self, event: str, message: str):
         """触发进度回调"""
