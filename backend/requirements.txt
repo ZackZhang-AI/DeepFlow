@@ -2,7 +2,7 @@
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-aiosqlite>=0.20.0
+aiosqlite>=0.22.1
 
 # 复用 CLI 依赖（搜索、模型等）
 -r ../requirements.txt
