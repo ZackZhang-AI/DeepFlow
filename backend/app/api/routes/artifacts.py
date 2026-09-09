@@ -125,7 +125,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
     audio_url = None
     tts_provider = get_tts_provider()
     try:
-        audio_path = ARTIFACT_DIR / f"{req.task_id}_podcast_{uuid.uuid4().hex[:8]}.wav"
+        audio_path = ARTIFACT_DIR / f"podcast_{uuid.uuid4().hex}.wav"
         await asyncio.to_thread(tts_provider.synthesize, display, audio_path)
         audio_artifact = save_artifact(
             artifact_id=f"art_{uuid.uuid4().hex[:12]}",
@@ -139,7 +139,7 @@ async def generate_podcast(req: ArtifactRequest, user: dict = Depends(require_lo
         audio_artifact_id = audio_artifact["artifact_id"]
         audio_url = f"/api/artifacts/download/{audio_artifact_id}"
     except Exception as exc:
-        audio_error = f"本机 TTS 音频生成失败，脚本已生成并可下载。原因：{exc}"
+        audio_error = "本机 TTS 音频生成失败，脚本已生成并可下载。请检查本机语音服务。"
         logger.warning("Podcast audio generation failed: %s", exc)
 
     script_artifact = save_artifact(
@@ -202,7 +202,7 @@ async def generate_ppt(req: ArtifactRequest, user: dict = Depends(require_login)
         locale=req.locale,
     )
 
-    pptx_path = ARTIFACT_DIR / f"{req.task_id}_slides_{uuid.uuid4().hex[:8]}.pptx"
+    pptx_path = ARTIFACT_DIR / f"slides_{uuid.uuid4().hex}.pptx"
     _write_pptx(slides, title, pptx_path)
     pptx_artifact = save_artifact(
         artifact_id=f"art_{uuid.uuid4().hex[:12]}",
@@ -459,8 +459,12 @@ def _write_pptx(slides_markdown: str, title: str, output_path: Path) -> None:
             p.level = 1 if line.startswith(("-", "*")) else 0
             p.font.size = Pt(17 if len(p.text) < 80 else 14)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(output_path)
+    safe_output = output_path.resolve()
+    artifact_root = ARTIFACT_DIR.resolve()
+    if safe_output.parent != artifact_root:
+        raise ValueError("Artifact output path must stay inside the artifact directory")
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    prs.save(safe_output)
 
 
 def _clean_tts_text(text: str) -> str:
@@ -482,7 +486,9 @@ def _existing_file_path(content: str) -> Path | None:
     if not content or "\n" in content or len(content) > 500:
         return None
     try:
-        path = Path(content)
+        path = Path(content).resolve()
+        if path.parent != ARTIFACT_DIR.resolve():
+            return None
         return path if path.exists() and path.is_file() else None
     except (OSError, ValueError):
         return None

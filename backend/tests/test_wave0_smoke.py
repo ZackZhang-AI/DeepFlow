@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -28,6 +29,14 @@ class FakeRerankService:
             reverse=True,
         )
         return [(index, 1.0 - rank * 0.01) for rank, (index, _) in enumerate(ranked[:top_n])]
+
+
+def test_artifact_file_path_rejects_files_outside_artifact_directory(tmp_path):
+    from backend.app.api.routes.artifacts import _existing_file_path
+
+    outside = tmp_path / "outside.wav"
+    outside.write_bytes(b"not an artifact")
+    assert _existing_file_path(str(outside)) is None
 
 
 def _unique_username(prefix: str) -> str:
