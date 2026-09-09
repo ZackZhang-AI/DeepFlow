@@ -73,5 +73,9 @@ def artifact_rate_limit() -> int:
     return env_int("ARTIFACT_RATE_LIMIT_PER_HOUR", 20, minimum=0)
 
 
+def readiness_probe_rate_limit() -> int:
+    return env_int("READINESS_PROBE_RATE_LIMIT_PER_HOUR", 6, minimum=0)
+
+
 def knowledge_upload_max_bytes() -> int:
     return env_int("KNOWLEDGE_UPLOAD_MAX_BYTES", 5 * 1024 * 1024, minimum=1)

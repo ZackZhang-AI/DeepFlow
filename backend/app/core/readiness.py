@@ -29,6 +29,7 @@ _PLACEHOLDER_MARKERS = (
 )
 _PROBE_TTL_SECONDS = 600
 _probe_cache: dict[str, Any] = {}
+_probe_inflight: asyncio.Task[dict[str, Any]] | None = None
 
 
 def _configured(name: str) -> bool:
@@ -171,9 +172,23 @@ def _required_model_names() -> set[str]:
 
 
 async def _probe_model_provider() -> dict[str, Any]:
+    global _probe_inflight
     now = time.monotonic()
     if _probe_cache and now - float(_probe_cache.get("cached_at") or 0) < _PROBE_TTL_SECONDS:
         return dict(_probe_cache["result"])
+
+    if _probe_inflight is None or _probe_inflight.done():
+        _probe_inflight = asyncio.create_task(_run_model_probe())
+    task = _probe_inflight
+    try:
+        return dict(await asyncio.shield(task))
+    finally:
+        if task.done() and _probe_inflight is task:
+            _probe_inflight = None
+
+
+async def _run_model_probe() -> dict[str, Any]:
+    now = time.monotonic()
 
     model = os.getenv("PLANNER_MODEL", Config.PLANNER_MODEL)
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -207,7 +222,9 @@ async def _probe_model_provider() -> dict[str, Any]:
 
 
 def reset_readiness_probe_cache() -> None:
+    global _probe_inflight
     _probe_cache.clear()
+    _probe_inflight = None
 
 
 def require_research_providers() -> None:

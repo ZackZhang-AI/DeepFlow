@@ -240,6 +240,36 @@ def test_readiness_probe_is_cached(monkeypatch, tmp_path):
     assert calls == 1
 
 
+def test_concurrent_readiness_probes_share_one_provider_call(monkeypatch, tmp_path):
+    _use_temp_db(tmp_path, monkeypatch)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    calls = 0
+
+    async def fake_generate_text(**_kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return "OK", 1, 1
+
+    monkeypatch.setattr(
+        "backend.app.core.readiness.LLMProvider.generate_text",
+        fake_generate_text,
+    )
+    reset_readiness_probe_cache()
+
+    async def run_concurrently():
+        return await asyncio.gather(
+            get_readiness(probe=True),
+            get_readiness(probe=True),
+            get_readiness(probe=True),
+        )
+
+    results = asyncio.run(run_concurrently())
+    assert all(result["model"]["ready"] for result in results)
+    assert calls == 1
+
+
 def test_fast_reporter_honors_output_budget(monkeypatch):
     captured = {}
 
