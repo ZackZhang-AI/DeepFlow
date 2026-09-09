@@ -35,6 +35,13 @@ export interface ResearchTask {
   budget: TaskBudget;
   usage: TaskUsage;
   budget_percent: number;
+  is_demo?: boolean;
+}
+
+export interface SharedSource {
+  title: string;
+  url: string;
+  source_type: string;
 }
 
 export type BudgetProfile = "fast" | "standard" | "deep";
