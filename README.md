@@ -181,7 +181,7 @@ python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 | Swagger | `http://localhost:8000/docs` |
 | 健康检查 | `http://localhost:8000/api/health` |
 | Provider 配置检查 | `http://localhost:8000/api/system/readiness` |
-| Provider 真实探测 | `http://localhost:8000/api/system/readiness?probe=true` |
+| Provider 真实探测（需登录，10 分钟缓存） | `http://localhost:8000/api/system/readiness?probe=true` |
 
 ### 4. 启动前端
 
@@ -228,7 +228,7 @@ http://localhost:3001
 | 模块 | 代表接口 |
 | --- | --- |
 | Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
-| System | `GET /api/system/readiness?probe=true` |
+| System | `GET /api/system/readiness`, `GET /api/system/readiness?probe=true`（需登录且限流） |
 | Research | `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/retry`, `GET /api/research-tasks/{id}/events?after_seq=` |
 | Research | `POST /api/research-tasks`, `GET /api/research-tasks/{id}`, `POST /api/research-tasks/{id}/confirm-plan` |
 | Usage | `GET /api/research-tasks/usage-summary` |
@@ -270,6 +270,9 @@ python -m evals.live_eval --formal
 - 当前默认使用 SQLite，适合原型、MVP 和单机验证；大规模生产部署前建议评估 PostgreSQL/pgvector。
 - 工具启用状态按用户持久化到 SQLite。
 - 私域知识库已具备 PRD 所需检索闭环，但未引入 Milvus、MinIO、Celery、RAGAS 等 PRD 外企业栈。
+- 知识库索引会记录 embedding Provider、模型、维度和版本；配置变化后需重建索引，不会静默混用旧向量。
+- 预算为报告预留额度而提前停止时，任务会交付已有报告并明确标记“部分覆盖”，不会伪装为完整覆盖。
+- 生成报告需通过标题、总结、分析、来源和可追溯引用检查；不合格结果进入可重试失败状态。
 - 工作流为顺序配置式可运行版本；`edges` 尚不参与条件分支执行。
 - 公共部署默认 `DISABLE_SANDBOX_TOOL=true`；只有 Docker readiness 正常时才应开启 Coder。
 - 云 TTS、计费、企业 SSO、复杂审批流不在当前 PRD 实现范围内。
