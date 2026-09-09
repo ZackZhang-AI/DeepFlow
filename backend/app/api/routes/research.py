@@ -4,6 +4,7 @@
 
 import uuid
 import json
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -148,6 +149,7 @@ async def get_research_sources(task_id: str, user: dict = Depends(require_login)
                     "retrieved_at": reference.get("retrieved_at"),
                     "confidence": float(reference.get("confidence") or 0),
                     "steps": [],
+                    "claims": [],
                 },
             )
             item["steps"].append(
@@ -156,7 +158,22 @@ async def get_research_sources(task_id: str, user: dict = Depends(require_login)
                     "step_title": step.get("title") or "",
                 }
             )
+            for claim in _claims_using_source(step.get("findings_markdown") or "", url):
+                if claim not in item["claims"]:
+                    item["claims"].append(claim)
     return list(by_url.values())
+
+
+def _claims_using_source(markdown: str, url: str) -> list[str]:
+    claims: list[str] = []
+    for paragraph in re.split(r"\n\s*\n", markdown):
+        if url not in paragraph:
+            continue
+        cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", paragraph)
+        cleaned = re.sub(r"^[#>*\-\d.\s]+", "", cleaned).strip()
+        if cleaned:
+            claims.append(cleaned[:500])
+    return claims
 
 
 @router.get("/{task_id}", response_model=ResearchTaskResponse)

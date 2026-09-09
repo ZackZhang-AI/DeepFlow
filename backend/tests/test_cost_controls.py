@@ -172,6 +172,52 @@ def test_research_reserves_budget_and_still_generates_report(tmp_path, monkeypat
     assert __import__("json").loads(completed["coverage_json"])["completed_steps"] == 1
 
 
+def test_standard_planning_uses_one_degradable_background_search(tmp_path, monkeypatch):
+    from backend.app.services import research as research_service
+    from cli.models import SearchBatch, SearchResult
+
+    _use_temp_db(tmp_path, monkeypatch)
+    task = create_task(
+        "task_planning_background",
+        "AI Agent 市场",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        budget_profile="standard",
+        max_steps=5,
+        max_tokens_budget=90_000,
+    )
+    captured = {}
+
+    async def fake_search(*_args, **_kwargs):
+        return SearchBatch(
+            results=[SearchResult(title="市场来源", url="https://example.com/market", snippet="市场背景")],
+            credits=1,
+            provider="tavily",
+        )
+
+    async def fake_plan(**kwargs):
+        captured.update(kwargs)
+        return (
+            ResearchPlan(
+                title="市场计划",
+                steps=[ResearchStep(title="市场", description="分析市场", need_search=True, step_type="research")],
+            ),
+            20,
+            10,
+        )
+
+    monkeypatch.setattr(research_service, "web_search", fake_search)
+    monkeypatch.setattr(research_service, "generate_plan", fake_plan)
+    asyncio.run(
+        research_service.generate_research_plan_task(
+            task["task_id"], task["topic"], max_steps=5
+        )
+    )
+    planned = get_task(task["task_id"])
+    assert "市场背景" in captured["context"]
+    assert planned["search_calls"] == 1
+    assert planned["search_credits"] == 1
+
+
 def test_legacy_budget_failure_is_upgraded_and_retryable(tmp_path, monkeypatch):
     _use_temp_db(tmp_path, monkeypatch)
     task = create_task(

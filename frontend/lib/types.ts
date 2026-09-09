@@ -66,6 +66,7 @@ export interface EvidenceSource extends SharedSource {
   retrieved_at: string | null;
   confidence: number;
   steps: Array<{ step_index: number; step_title: string }>;
+  claims: string[];
 }
 
 export type BudgetProfile = "fast" | "standard" | "deep";

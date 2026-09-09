@@ -204,6 +204,7 @@ def test_research_sources_keep_step_provenance(tmp_path, monkeypatch):
     db.update_step(
         step_id,
         status="completed",
+        findings_markdown="市场数据来自 [权威来源](https://example.com/source)，可用于判断趋势。",
         sources_json=[
             {
                 "title": "权威来源",
@@ -221,6 +222,7 @@ def test_research_sources_keep_step_provenance(tmp_path, monkeypatch):
     )
     assert sources[0]["title"] == "权威来源"
     assert sources[0]["steps"] == [{"step_index": 1, "step_title": "市场规模"}]
+    assert sources[0]["claims"] == ["市场数据来自 权威来源，可用于判断趋势。"]
 
 
 def test_clarification_questions_progress_without_repeating():

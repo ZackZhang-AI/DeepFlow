@@ -99,6 +99,11 @@ export function SourceInspector({
                     </p>
                   )}
                   {detail?.snippet && <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-600">{detail.snippet}</p>}
+                  {detail?.claims?.[0] && (
+                    <blockquote className="mt-2 border-l-2 border-teal-300 pl-2 text-xs leading-5 text-slate-600">
+                      对应论述：{detail.claims[0]}
+                    </blockquote>
+                  )}
                   <p className="mt-1 break-all text-xs leading-5 text-[var(--muted)]">{source}</p>
                 </div>
                 {isKnowledge ? (

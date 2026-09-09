@@ -23,6 +23,7 @@ from cli.agents.planner import generate_plan
 from cli.agents.researcher import research_step
 from cli.agents.coder import process_step
 from cli.agents.reporter import ReportQualityError, generate_report, validate_report_quality
+from cli.tools.web_search import web_search
 from backend.app.repositories.research import (
     update_task,
     save_step,
@@ -59,10 +60,29 @@ async def generate_research_plan_task(
         phase_started = time.time()
         _ensure_call_capacity(0, 2048, budget.max_tokens)
         planner_model = task.get("planner_model") or Config.PLANNER_MODEL
+        planning_context = ""
+        planning_search_calls = 0
+        planning_search_credits = 0
+        if budget.profile in {"standard", "deep"}:
+            try:
+                background = await web_search(
+                    topic,
+                    max_results=3,
+                    search_depth=budget.search_depth,
+                )
+                planning_search_calls = 1
+                planning_search_credits = background.credits
+                planning_context = "规划前背景资料：\n" + "\n".join(
+                    f"- {item.title}: {item.snippet[:300]} ({item.url})"
+                    for item in background.results[:3]
+                )
+            except Exception as exc:
+                logger.warning("Planning background search skipped: %s", exc)
         plan, pt, ct = await generate_plan(
             topic=topic,
             locale=locale,
             max_steps=max_steps or Config.MAX_STEPS,
+            context=planning_context,
             model_override=planner_model,
         )
         save_agent_run(
@@ -75,6 +95,7 @@ async def generate_research_plan_task(
             prompt_tokens=pt,
             completion_tokens=ct,
             elapsed_seconds=time.time() - phase_started,
+            tool_calls=[{"tool": "web_search", "count": planning_search_calls}],
         )
         _ensure_token_budget(pt + ct, budget.max_tokens)
 
@@ -90,6 +111,8 @@ async def generate_research_plan_task(
             tokens_used=pt + ct,
             cost_rmb=estimate_cost_rmb(planner_model, pt, ct),
             pricing_version=task.get("pricing_version") or PRICING_VERSION,
+            search_calls=int(task.get("search_calls") or 0) + planning_search_calls,
+            search_credits=int(task.get("search_credits") or 0) + planning_search_credits,
             elapsed_seconds=time.time() - started_at,
         )
 

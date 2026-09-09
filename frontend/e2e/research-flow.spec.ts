@@ -136,6 +136,7 @@ async function installApiMock(page: Page, initialStatus: string, errorCode = "pr
           retrieved_at: now,
           confidence: 0.9,
           steps: [{ step_index: 1, step_title: "市场证据" }],
+          claims: ["知识库资料支持该结论。"],
         }],
       });
       return;
