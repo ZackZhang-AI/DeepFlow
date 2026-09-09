@@ -12,6 +12,13 @@ export function ReportWorkspace({ taskId, initialReport }: { taskId: string; ini
   const router = useRouter();
   const [report, setReport] = useState(initialReport);
   const [reportStyle, setReportStyle] = useState("general");
+  const [reportRevision, setReportRevision] = useState(0);
+
+  const handleRestyled = (style: string, markdown: string) => {
+    setReportStyle(style);
+    setReport((current) => ({ ...current, content_markdown: markdown }));
+    setReportRevision((current) => current + 1);
+  };
 
   const download = (format: "markdown" | "pdf") => {
     const extension = format === "markdown" ? "md" : "pdf";
@@ -35,13 +42,10 @@ export function ReportWorkspace({ taskId, initialReport }: { taskId: string; ini
       <StyleSelector
         taskId={taskId}
         currentStyle={reportStyle}
-        onRestyled={(style, markdown) => {
-          setReportStyle(style);
-          setReport((current) => ({ ...current, content_markdown: markdown }));
-        }}
+        onRestyled={handleRestyled}
       />
       <ReportView
-        key={report.report_id}
+        key={`${report.report_id}:${reportRevision}`}
         report={report}
         onExport={download}
         onNewResearch={() => router.push("/")}

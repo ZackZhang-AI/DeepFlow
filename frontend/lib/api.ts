@@ -291,6 +291,18 @@ export async function processProse(action: ProseAction, text: string, instructio
   });
 }
 
+export async function restyleReport(taskId: string, style: string, locale = "zh-CN") {
+  return authJson<{ artifact_id: string; style: string; report_markdown: string; tokens: number }>(
+    "/api/artifacts/restyle",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, locale, style }),
+    },
+    "报告风格切换失败",
+  );
+}
+
 export async function listKnowledgeDocuments() {
   return authJson<KnowledgeDocument[]>("/api/knowledge-documents");
 }

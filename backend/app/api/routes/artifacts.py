@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from backend.app.repositories.artifact import list_artifacts, save_artifact, save_report_version
-from backend.app.repositories.research import get_task, update_task
+from backend.app.repositories.research import get_task, list_steps, update_task
 from backend.app.core.auth import require_login
 from backend.app.core.access import require_artifact_access, require_task_access
 from backend.app.core.rate_limit import check_rate_limit
@@ -305,7 +305,7 @@ async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_logi
     sys.path.insert(0, str(ROOT_DIR))
 
     from cli.agents.reporter import generate_report
-    from cli.models import ResearchPlan, ResearchFinding
+    from cli.models import ResearchFinding, ResearchPlan, SourceReference
 
     # 重建 plan
     plan = ResearchPlan(title=task["topic"], locale=req.locale, has_enough_context=True, thought="", steps=[])
@@ -316,19 +316,33 @@ async def restyle_report(req: ArtifactRequest, user: dict = Depends(require_logi
     except Exception:
         pass
 
-    # 简化版：直接复用缓存报告内容作为 findings 输入
-    findings: list = []
-    if task.get("report_markdown"):
-        findings = [
+    findings: list[ResearchFinding] = []
+    for index, step in enumerate(list_steps(req.task_id, user_id=task["user_id"]), 1):
+        references = [
+            SourceReference.model_validate(item)
+            for item in json.loads(step.get("sources_json") or "[]")
+        ]
+        findings.append(
+            ResearchFinding(
+                step_id=step.get("step_id") or f"restyle_{index}",
+                step_title=step.get("title") or f"研究步骤 {index}",
+                problem_statement=step.get("description") or task["topic"],
+                findings_markdown=step.get("findings_markdown") or "",
+                conclusion=step.get("conclusion") or "",
+                references=references,
+            )
+        )
+    if not findings and task.get("report_markdown"):
+        findings.append(
             ResearchFinding(
                 step_id="restyle_1",
                 step_title="研究内容",
                 problem_statement=task["topic"],
                 findings_markdown=task["report_markdown"],
-                conclusion="",
+                conclusion="原报告未保留结构化步骤证据，请谨慎改写并明确局限。",
                 references=[],
             )
-        ]
+        )
 
     report, pt, ct = await generate_report(
         plan=plan,

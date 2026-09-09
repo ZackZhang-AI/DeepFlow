@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { restyleReport } from "@/lib/api";
 
 const STYLES = [
-  { id: "general", label: "通用", icon: "📄", desc: "专业研究报告" },
-  { id: "academic", label: "学术", icon: "🎓", desc: "严谨学术论文" },
-  { id: "popular_science", label: "科普", icon: "🔬", desc: "通俗易懂" },
-  { id: "news", label: "新闻", icon: "📰", desc: "倒金字塔报道" },
-  { id: "social_media", label: "社交媒体", icon: "📱", desc: "小红书/Twitter" },
-  { id: "strategic_investment", label: "投资分析", icon: "💰", desc: "深度投研报告" },
+  { id: "general", label: "通用", desc: "专业研究报告" },
+  { id: "academic", label: "学术", desc: "严谨学术论文" },
+  { id: "popular_science", label: "科普", desc: "通俗易懂" },
+  { id: "news", label: "新闻", desc: "倒金字塔报道" },
+  { id: "social_media", label: "社交媒体", desc: "适合社交平台阅读" },
+  { id: "strategic_investment", label: "投资分析", desc: "深度投研报告" },
 ] as const;
 
 interface Props {
@@ -27,13 +28,7 @@ export function StyleSelector({ taskId, currentStyle, onRestyled }: Props) {
     setError(null);
 
     try {
-      const res = await fetch("http://localhost:8000/api/artifacts/restyle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task_id: taskId, locale: "zh-CN", style }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await restyleReport(taskId, style);
       onRestyled(style, data.report_markdown);
     } catch (e) {
       setError(e instanceof Error ? e.message : "风格切换失败");
@@ -65,17 +60,16 @@ export function StyleSelector({ taskId, currentStyle, onRestyled }: Props) {
             >
               {isLoading ? (
                 <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
-              ) : (
-                <span aria-hidden="true">{s.icon}</span>
-              )}
+              ) : null}
               {s.label}
             </button>
           );
         })}
       </div>
       {error && (
-        <p className="mt-3 text-xs text-red-500">{error}</p>
+        <p role="alert" className="mt-3 text-xs text-red-600">{error}</p>
       )}
+      {loading && !error && <p aria-live="polite" className="mt-3 text-xs text-slate-500">正在生成新风格并保存原版本，请勿关闭页面。</p>}
     </div>
   );
 }

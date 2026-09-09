@@ -134,6 +134,19 @@ async function installApiMock(page: Page, initialStatus: string, errorCode = "pr
       await route.fulfill({ json: report });
       return;
     }
+    if (path.endsWith("/artifacts/restyle")) {
+      expect(request.headers().authorization).toBe("Bearer e2e-token");
+      const body = request.postDataJSON() as { style?: string };
+      await route.fulfill({
+        json: {
+          artifact_id: "artifact-restyled",
+          style: body.style,
+          report_markdown: "# 学术版报告\n\n## 摘要\n\n这是更新后的报告正文。",
+          tokens: 300,
+        },
+      });
+      return;
+    }
     if (path.endsWith(`/artifacts/${TASK_ID}`)) {
       await route.fulfill({ json: [] });
       return;
@@ -183,6 +196,8 @@ test("计划确认后可完成、刷新恢复并定位知识库原文", async ({
   await expect(page.getByRole("button", { name: "保存", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "版本" })).toBeVisible();
   await expect(page.getByRole("button", { name: "PPTX" })).toBeVisible();
+  await page.getByRole("button", { name: "学术" }).click();
+  await expect(page.getByRole("heading", { name: "学术版报告" })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "报告工作区" })).toBeVisible();
