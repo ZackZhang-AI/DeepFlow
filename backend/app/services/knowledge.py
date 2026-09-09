@@ -23,7 +23,13 @@ from backend.app.repositories.knowledge import (
     update_knowledge_document,
 )
 from backend.app.config import BACKEND_DIR
-from backend.app.services.embedding import EmbeddingError, get_embedding_service, get_rerank_service
+from backend.app.services.embedding import (
+    EmbeddingError,
+    EmbeddingIdentity,
+    get_embedding_identity,
+    get_embedding_service,
+    get_rerank_service,
+)
 from cli.config import Config
 
 MAX_DOCUMENT_CHARS = 300_000
@@ -40,6 +46,16 @@ class ParsedDocument:
     source_type: str
     pages: list[tuple[int, str]]
     metadata: dict
+
+
+class KnowledgeIndexCompatibilityError(EmbeddingError):
+    def __init__(self, document_ids: list[str], current: EmbeddingIdentity) -> None:
+        self.document_ids = document_ids
+        self.current = current
+        super().__init__(
+            "Knowledge index is incompatible with the current embedding model; "
+            f"reindex documents: {', '.join(document_ids)}"
+        )
 
 
 def ingest_text_document(
@@ -277,11 +293,22 @@ def search_knowledge_chunks(
     if not query:
         return []
 
-    embedding = get_embedding_service().embed_query(query)
+    embedding_service = get_embedding_service()
+    embedding = embedding_service.embed_query(query)
     if not embedding:
         return []
 
     rows = list_embedded_knowledge_chunks(user_id=user_id, document_ids=document_ids)
+    current_identity = get_embedding_identity(embedding_service, embedding)
+    incompatible_doc_ids = sorted(
+        {
+            row["doc_id"]
+            for row in rows
+            if not _index_is_compatible(row, current_identity)
+        }
+    )
+    if incompatible_doc_ids:
+        raise KnowledgeIndexCompatibilityError(incompatible_doc_ids, current_identity)
     limit = limit or Config.KNOWLEDGE_TOP_K
     candidate_limit = max(Config.KNOWLEDGE_CANDIDATE_K, limit)
     score_threshold = Config.KNOWLEDGE_SCORE_THRESHOLD if score_threshold is None else score_threshold
@@ -375,7 +402,13 @@ def _embed_and_store(
         raise ValueError("No chunks were created from the document")
 
     texts = [chunk["content"] for chunk in chunks]
-    embeddings = get_embedding_service().embed_documents(texts, batch_size=EMBEDDING_BATCH_SIZE)
+    embedding_service = get_embedding_service()
+    embeddings = embedding_service.embed_documents(texts, batch_size=EMBEDDING_BATCH_SIZE)
+    if len(embeddings) != len(chunks):
+        raise EmbeddingError("Embedding count does not match knowledge chunk count")
+    identity = get_embedding_identity(embedding_service, embeddings[0] if embeddings else None)
+    if identity.dimensions <= 0:
+        raise EmbeddingError("Embedding provider returned an unknown vector dimension")
     for chunk, embedding in zip(chunks, embeddings):
         chunk["embedding"] = embedding
         chunk["metadata"] = {
@@ -393,6 +426,25 @@ def _embed_and_store(
         chunk_count=len(chunks),
         error_message="",
         metadata=metadata,
+        embedding_provider=identity.provider,
+        embedding_model=identity.model,
+        embedding_dimensions=identity.dimensions,
+        index_version=identity.index_version,
+    )
+
+
+def _index_is_compatible(row: dict, current: EmbeddingIdentity) -> bool:
+    stored_dimensions = int(row.get("embedding_dimensions") or 0)
+    stored_provider = str(row.get("embedding_provider") or "")
+    stored_model = str(row.get("embedding_model") or "")
+    stored_version = str(row.get("index_version") or "")
+    if not all((stored_dimensions, stored_provider, stored_model, stored_version)):
+        return False
+    return (
+        stored_dimensions == current.dimensions
+        and stored_provider == current.provider
+        and stored_model == current.model
+        and stored_version == current.index_version
     )
 
 

@@ -16,6 +16,7 @@ from backend.app.core.access import require_knowledge_access, require_scope_acce
 from backend.app.models.schemas import KnowledgeDocumentRequest
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import (
+    KnowledgeIndexCompatibilityError,
     queue_text_document,
     queue_uploaded_document,
     search_knowledge_chunks,
@@ -109,6 +110,15 @@ async def search_documents(
                 user_id=user["user_id"],
             )
         ]
+    except KnowledgeIndexCompatibilityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "KNOWLEDGE_REINDEX_REQUIRED",
+                "message": "知识库索引与当前向量模型不兼容，请先重建索引。",
+                "document_ids": exc.document_ids,
+            },
+        ) from exc
     except EmbeddingError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -132,6 +142,10 @@ async def reindex(doc_id: str, user: dict = Depends(require_login)):
         status="pending",
         error_message="",
         chunk_count=0,
+        embedding_provider="",
+        embedding_model="",
+        embedding_dimensions=0,
+        index_version="",
     )
     enqueue_job(
         "knowledge_index",
@@ -159,6 +173,10 @@ def _public_doc(doc: dict) -> dict:
         "status": doc.get("status") or "pending",
         "chunk_count": doc.get("chunk_count") or 0,
         "error_message": doc.get("error_message") or "",
+        "embedding_provider": doc.get("embedding_provider") or "",
+        "embedding_model": doc.get("embedding_model") or "",
+        "embedding_dimensions": doc.get("embedding_dimensions") or 0,
+        "index_version": doc.get("index_version") or "",
         "created_at": doc["created_at"],
         "updated_at": doc["updated_at"],
     }

@@ -3,6 +3,7 @@
 import hashlib
 import math
 import re
+from dataclasses import dataclass
 from http import HTTPStatus
 from functools import lru_cache
 
@@ -11,6 +12,17 @@ from cli.config import Config
 
 class EmbeddingError(RuntimeError):
     pass
+
+
+EMBEDDING_INDEX_VERSION = "1"
+
+
+@dataclass(frozen=True)
+class EmbeddingIdentity:
+    provider: str
+    model: str
+    dimensions: int
+    index_version: str = EMBEDDING_INDEX_VERSION
 
 
 def _usable_api_key(value: str) -> bool:
@@ -23,6 +35,8 @@ class LocalHashEmbeddingService:
     """Zero-cost deterministic embedding fallback for the local demo."""
 
     dimensions = 512
+    provider_name = "local"
+    model_name = "blake2b-token-hash-v1"
 
     def embed_documents(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
         return [self._embed(text) for text in texts]
@@ -69,6 +83,8 @@ class DashScopeEmbeddingService:
         self._client = TextEmbedding
         self._api_key = Config.DASHSCOPE_API_KEY
         self._model = Config.EMBEDDING_MODEL
+        self.provider_name = "dashscope"
+        self.model_name = self._model
 
     def embed_documents(self, texts: list[str], batch_size: int = 16) -> list[list[float]]:
         if not texts:
@@ -139,6 +155,14 @@ def get_embedding_service() -> DashScopeEmbeddingService | LocalHashEmbeddingSer
     if provider == "local" or (provider == "auto" and not _usable_api_key(Config.DASHSCOPE_API_KEY)):
         return LocalHashEmbeddingService()
     return DashScopeEmbeddingService()
+
+
+def get_embedding_identity(service: object, vector: list[float] | None = None) -> EmbeddingIdentity:
+    """Return a stable identity for persisted vectors, including test providers."""
+    provider = str(getattr(service, "provider_name", service.__class__.__name__)).lower()
+    model = str(getattr(service, "model_name", getattr(service, "_model", provider)))
+    dimensions = int(getattr(service, "dimensions", 0) or len(vector or []))
+    return EmbeddingIdentity(provider=provider, model=model, dimensions=dimensions)
 
 
 @lru_cache(maxsize=1)

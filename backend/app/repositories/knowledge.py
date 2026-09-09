@@ -93,7 +93,8 @@ def list_knowledge_documents(limit: int = 50, offset: int = 0, user_id: str | No
     if user_id is None:
         rows = conn.execute(
             """SELECT doc_id, user_id, title, source_name, source_type, length(content) AS content_length,
-                  status, chunk_count, error_message, metadata_json, created_at, updated_at
+                  status, chunk_count, error_message, metadata_json, embedding_provider,
+                  embedding_model, embedding_dimensions, index_version, created_at, updated_at
            FROM knowledge_documents
            ORDER BY updated_at DESC LIMIT ? OFFSET ?""",
             (limit, offset),
@@ -101,7 +102,8 @@ def list_knowledge_documents(limit: int = 50, offset: int = 0, user_id: str | No
     else:
         rows = conn.execute(
             """SELECT doc_id, user_id, title, source_name, source_type, length(content) AS content_length,
-                  status, chunk_count, error_message, metadata_json, workspace_id, project_id,
+                  status, chunk_count, error_message, metadata_json, embedding_provider,
+                  embedding_model, embedding_dimensions, index_version, workspace_id, project_id,
                   created_at, updated_at
                FROM knowledge_documents d
                WHERE d.user_id = ?
@@ -197,7 +199,8 @@ def list_embedded_knowledge_chunks(
     if user_id is None:
         rows = conn.execute(
             f"""SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
-                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
+                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type,
+                  d.embedding_provider, d.embedding_model, d.embedding_dimensions, d.index_version
            FROM knowledge_chunks c
            JOIN knowledge_documents d ON d.doc_id = c.doc_id
            WHERE d.status IN ('ready', 'completed')
@@ -208,7 +211,8 @@ def list_embedded_knowledge_chunks(
     else:
         rows = conn.execute(
             f"""SELECT c.chunk_id, c.doc_id, c.user_id, c.chunk_index, c.content, c.page_num,
-                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type
+                  c.source_name, c.embedding_json, c.metadata_json, d.title, d.source_type,
+                  d.embedding_provider, d.embedding_model, d.embedding_dimensions, d.index_version
            FROM knowledge_chunks c
            JOIN knowledge_documents d ON d.doc_id = c.doc_id
            WHERE d.status IN ('ready', 'completed')

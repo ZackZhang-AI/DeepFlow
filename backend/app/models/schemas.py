@@ -100,6 +100,10 @@ class ResearchTaskResponse(BaseModel):
     retryable: bool = False
     error_code: str = ""
     error_message: str = ""
+    embedding_provider: str = ""
+    embedding_model: str = ""
+    embedding_dimensions: int = 0
+    index_version: str = ""
     last_event_seq: int = 0
     plan: Optional[dict] = None
     budget: TaskBudget

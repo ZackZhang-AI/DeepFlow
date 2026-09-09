@@ -161,6 +161,10 @@ def init_db() -> None:
             chunk_count INTEGER DEFAULT 0,
             error_message TEXT DEFAULT '',
             metadata_json TEXT DEFAULT '{}',
+            embedding_provider TEXT DEFAULT '',
+            embedding_model TEXT DEFAULT '',
+            embedding_dimensions INTEGER DEFAULT 0,
+            index_version TEXT DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -341,6 +345,10 @@ def init_db() -> None:
     _ensure_column(conn, "knowledge_documents", "chunk_count", "INTEGER DEFAULT 0")
     _ensure_column(conn, "knowledge_documents", "error_message", "TEXT DEFAULT ''")
     _ensure_column(conn, "knowledge_documents", "metadata_json", "TEXT DEFAULT '{}'")
+    _ensure_column(conn, "knowledge_documents", "embedding_provider", "TEXT DEFAULT ''")
+    _ensure_column(conn, "knowledge_documents", "embedding_model", "TEXT DEFAULT ''")
+    _ensure_column(conn, "knowledge_documents", "embedding_dimensions", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "knowledge_documents", "index_version", "TEXT DEFAULT ''")
     _ensure_column(conn, "report_versions", "user_id", f"TEXT DEFAULT '{LOCAL_DEFAULT_USER_ID}'")
     _ensure_column(conn, "artifacts", "user_id", f"TEXT DEFAULT '{LOCAL_DEFAULT_USER_ID}'")
     _ensure_column(conn, "agent_runs", "user_id", f"TEXT DEFAULT '{LOCAL_DEFAULT_USER_ID}'")

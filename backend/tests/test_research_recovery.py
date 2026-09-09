@@ -76,6 +76,9 @@ def test_pending_text_document_can_be_processed(tmp_path, monkeypatch):
     ready = knowledge.process_pending_document(doc["doc_id"], db.LOCAL_DEFAULT_USER_ID)
     assert ready["status"] == "ready"
     assert ready["chunk_count"] > 0
+    assert ready["embedding_dimensions"] == 2
+    assert ready["embedding_provider"] == "fakeembedding"
+    assert ready["index_version"] == "1"
 
 
 def test_local_embedding_supports_zero_cost_private_knowledge():
@@ -121,6 +124,31 @@ def test_knowledge_search_only_uses_selected_documents(tmp_path, monkeypatch):
 
     assert hits
     assert {hit["doc_id"] for hit in hits} == {second["doc_id"]}
+
+
+def test_knowledge_search_requires_reindex_after_embedding_change(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.services import knowledge
+    from backend.app.services.embedding import LocalHashEmbeddingService
+
+    monkeypatch.setattr(knowledge, "get_embedding_service", lambda: LocalHashEmbeddingService())
+    document = knowledge.queue_text_document(
+        title="旧索引",
+        content="DeepFlow 私域知识库索引兼容性。" * 40,
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+    )
+    knowledge.process_pending_document(document["doc_id"], db.LOCAL_DEFAULT_USER_ID)
+    db.update_knowledge_document(document["doc_id"], embedding_model="legacy-model")
+
+    with __import__("pytest").raises(knowledge.KnowledgeIndexCompatibilityError) as exc_info:
+        knowledge.search_knowledge_chunks(
+            "索引兼容性",
+            score_threshold=0,
+            user_id=db.LOCAL_DEFAULT_USER_ID,
+            document_ids=[document["doc_id"]],
+        )
+
+    assert exc_info.value.document_ids == [document["doc_id"]]
 
 
 def test_report_removes_sources_not_recorded_by_researcher():
