@@ -20,7 +20,7 @@ DeepFlow 是一个深度研究 Agent 工作台。用户输入研究主题后，�
 - 前端：Next.js + React + TypeScript + Tailwind CSS
 - Agent 编排：Python asyncio 状态机
 - RAG：SQLite 存储文档、chunk、embedding
-- 工具：内置工具注册表，预留 MCP 扩展
+- 工具：内置工具注册表 + 环境配置的远程 MCP Streamable HTTP 工具
 - 模型：DeepSeek V4 Flash/Pro，保留国内外模型 Provider 接口
 
 明确暂不采用：
@@ -34,12 +34,12 @@ DeepFlow 是一个深度研究 Agent 工作台。用户输入研究主题后，�
 
 截至本轮提交，DeepFlow 已经从 CLI/Web MVP 扩展到 PRD 要求的主要产品闭环：
 
-- 单用户可完成深度研究。
+- 单用户研究主链路已具备完整功能闭环。
 - 多用户可注册、登录并隔离个人数据。
 - 用户可上传私域知识库并生成可追溯引用。
 - 报告可编辑、保存版本、恢复版本、导出 Markdown/PDF。
 - 可生成 PPTX、播客脚本和文本处理结果。
-- 可管理 MCP 工具并测试调用。
+- 可管理内置与远程 MCP 工具，并在工作流节点中测试和调用。
 - 可创建团队空间、项目、报告评论和只读共享链接。
 - 可创建研究模板并从模板启动研究。
 - 可配置并运行简化 Agent 工作流。
@@ -218,8 +218,15 @@ kb://{doc_id}#{chunk_id}
 内置工具注册表：
 
 - `web_search`
+- `arxiv_search`
 - `knowledge_search`
 - `python_sandbox`
+
+远程 MCP：
+
+- 使用 `MCP_TOOLS_JSON` 显式登记服务 URL、工具名和认证环境变量名。
+- 支持 Streamable HTTP `initialize` 与 `tools/call`。
+- 可作为配置式工作流中的 `MCP Tool` 节点执行，调用结果进入节点 Trace。
 
 API：
 
@@ -236,7 +243,7 @@ API：
 
 ### 当前边界
 
-工具启用状态已按用户持久化到 SQLite，服务重启后保持不变。
+工具启用状态已按用户持久化到 SQLite，服务重启后保持不变。公网演示默认不配置远程 MCP；当前不做插件市场、OAuth 安装流程或复杂审批。
 
 ## 12. Coder Agent 与 Python 沙箱
 
@@ -431,7 +438,23 @@ npm.cmd run test:e2e
 
 ## 20. 后续生产化建议
 
-当前版本已满足 PRD 功能闭环，但上线生产前建议继续增强：
+当前版本已覆盖 PRD 的核心功能表面和主要交互闭环，但不能仅凭功能存在就宣称达到全部产品目标。最新代码尚未重新执行付费 Live Eval，因此“90% 无人工干预完成率”“20+ 有效来源”和目标用户评分仍是待验证指标。
+
+本轮已经完成：
+
+- 报告风格切换统一鉴权、保存旧版本并同步新正文。
+- Provider 真实探测要求登录、限流、10 分钟缓存并复用并发请求。
+- 报告完成前检查标题、总结、分析、来源和引用；质量失败可重试。
+- 预算提前收尾时记录完整/部分覆盖、完成问题和跳过问题。
+- 来源接口返回标题、摘要、发布时间、可信度和对应研究步骤。
+- 知识库记录 embedding Provider、模型、维度和索引版本，配置变化时提示重建。
+- 最多三轮的规则化渐进澄清，不新增 LLM 成本。
+- 支持自然语言修改计划、自动确认计划 API 和基于报告证据追问。
+- 技术/论文研究可在预算允许时补充 arXiv 学术来源。
+- 远程 MCP 支持 `initialize`、`tools/call`、用户级启停、测试和工作流 Trace。
+- 离线验证结果：后端 55 项测试通过，前端 7 项 Playwright E2E 通过，Lint 与生产构建通过。
+
+仍需真实环境验证或生产化增强：
 
 - 大文件解析与并发上传压力测试。
 - embedding/rerank provider 的失败降级和重试策略。
@@ -440,6 +463,7 @@ npm.cmd run test:e2e
 - 更细粒度的 Agent Eval。
 - 更完整的成本告警。
 - 数据库从 SQLite 迁移到 PostgreSQL/pgvector 的生产方案。
+- 在明确批准的少量预算下重新执行固定 Live Eval，验证本轮预算和报告质量修复是否把成功率提升到目标值。
 
 ## 21. 最终目标
 
