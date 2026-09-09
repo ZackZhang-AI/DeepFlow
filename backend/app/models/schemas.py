@@ -94,6 +94,7 @@ class ResearchTaskResponse(BaseModel):
     clarification_questions: list[str] = Field(default_factory=list)
     knowledge_enabled: bool = False
     knowledge_document_ids: list[str] = Field(default_factory=list)
+    is_demo: bool = False
     phase: str = ""
     progress: float = 0.0
     retryable: bool = False

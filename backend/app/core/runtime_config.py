@@ -41,6 +41,14 @@ def demo_credentials() -> tuple[str, str] | None:
     return username, password
 
 
+def demo_seed_enabled() -> bool:
+    return env_bool("DEMO_SEED_ENABLED", False)
+
+
+def demo_share_token() -> str:
+    return os.getenv("DEMO_SHARE_TOKEN", "deepflow-showcase").strip() or "deepflow-showcase"
+
+
 def sandbox_tool_disabled() -> bool:
     return env_bool("DISABLE_SANDBOX_TOOL", True)
 

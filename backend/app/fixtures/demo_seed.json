@@ -1,0 +1,27 @@
+{
+  "market": {
+    "task_id": "demo_market_research",
+    "topic": "AI 深度研究产品市场与用户价值分析（演示样例）",
+    "report_markdown": "# 中国企业级 AI Agent 市场分析（脱敏演示）\n\n> 本报告脱敏自一次已成功完成的研究任务。为避免展示无法独立验证的未来事件，已移除相关公司事件与可疑来源；该页面为固定演示数据，不会触发模型或搜索调用。\n\n## 结论\n\n企业级 AI Agent 正处于高速增长但口径尚未统一的早期阶段。多家市场研究机构对全球市场给出较高增速预期，亚太被普遍视为增长较快的区域。对中国市场的判断可使用这些数据作为方向性代理，但不应直接等同于中国市场规模，正式商业决策仍需补充本地权威统计与厂商收入数据。\n\n## 主要分析\n\n### 1. 市场规模与增长\n\nPrecedence Research 预计全球 AI Agents 市场将从 2026 年约 115.5 亿美元增长至 2035 年约 2,946.6 亿美元，预测期复合增长率为 43.57%。Coherent Market Insights 对 Agentic AI 市场也给出高增长预期，并将亚太列为增长较快区域。不同机构对 Agent、Agentic AI 与企业级 Agent 的定义不同，因此数字应作为区间参考，而非直接拼接。\n\n### 2. 产品结构与部署方式\n\nSNS Insider 的细分数据显示，Agentic AI 平台是当前重要收入构成，模型与 Agent 层具有较快增长预期；云部署占据较高份额，同时受数据安全与控制要求影响，混合及本地部署仍有明确需求。对中国企业客户而言，部署选择将主要受数据敏感度、系统集成成本和模型可控性影响。\n\n### 3. 增长驱动\n\n企业自动化、知识工作提效与数字化转型是多份报告共同提及的驱动力。Fortune Business Insights 对生成式 AI 的研究也将企业采用、云基础设施和行业智能化列为市场扩张因素。由此推断，企业级 Agent 的近期机会更可能集中在流程明确、数据可接入、结果可校验的场景。\n\n### 4. 风险与边界\n\n- **统计口径风险**：AI Agent、Agentic AI 和生成式 AI 市场不可直接横向相加。\n- **可靠性风险**：模型幻觉、工具失败和来源质量会影响企业信任。\n- **数据与合规风险**：私域数据接入需要权限隔离、审计和可追溯引用。\n- **落地风险**：试点价值不等于规模化收益，仍需评估集成和运维成本。\n\n## 建议\n\n1. 将来源追溯、预算控制和失败恢复作为研究产品的基础能力。\n2. 优先验证市场分析、竞品研究和技术调研等结果可检查的场景。\n3. 对中国市场规模采用多源交叉验证，不引用无法验证的具体公司未来事件。\n\n## 来源\n\n- [AI Agents Market Size to Hit USD 294.66 Billion by 2035](https://www.precedenceresearch.com/ai-agents-market)\n- [Agentic AI Market Size, Trends & Forecast, 2026-2033](https://www.coherentmarketinsights.com/industry-reports/agentic-ai-market)\n- [Enterprise Agentic AI Market Size, Share & Growth Report 2035](https://www.snsinsider.com/reports/enterprise-agentic-ai-market-9068)\n- [Generative AI Market Size, Share, Value Report](https://www.fortunebusinessinsights.com/generative-ai-market-107837)",
+    "usage": {"prompt_tokens": 10905, "completion_tokens": 7148, "tokens_used": 18053, "cost_rmb": 0.0254, "elapsed_seconds": 91.3019, "search_calls": 3, "crawl_calls": 3, "search_credits": 3},
+    "sources": [
+      {"title": "AI Agents Market Size to Hit USD 294.66 Billion by 2035", "url": "https://www.precedenceresearch.com/ai-agents-market", "source_type": "market_research"},
+      {"title": "Agentic AI Market Size, Trends & Forecast, 2026-2033", "url": "https://www.coherentmarketinsights.com/industry-reports/agentic-ai-market", "source_type": "market_research"},
+      {"title": "Enterprise Agentic AI Market Size, Share & Growth Report 2035", "url": "https://www.snsinsider.com/reports/enterprise-agentic-ai-market-9068", "source_type": "market_research"},
+      {"title": "Generative AI Market Size, Share, Value Report", "url": "https://www.fortunebusinessinsights.com/generative-ai-market-107837", "source_type": "market_research"}
+    ]
+  },
+  "rag": {
+    "task_id": "demo_private_rag_research",
+    "doc_id": "demo_private_product_brief",
+    "topic": "基于私域产品资料总结 DeepFlow 的能力边界（演示样例）",
+    "document_title": "DeepFlow 脱敏产品资料（演示）",
+    "document_content": "这是完全脱敏的演示文档。DeepFlow 将复杂主题拆分为研究计划，结合公开检索与私域知识库形成报告。产品强调引用追溯、预算控制、失败恢复和用户数据隔离。当前演示环境不承诺临时上传文件持久化，也不会公开私域 chunk。",
+    "report_markdown": "# DeepFlow 私域资料研究摘要\n\n> 本报告来自脱敏的固定演示 fixture，不代表实时运行结果，仅登录演示账号后可查看。\n\n## 产品定位\n\nDeepFlow 是面向结构化深度研究的 Agent 工作台，覆盖计划、检索、分析、报告与成果物交付。[^1]\n\n## 能力边界\n\n系统强调引用追溯、预算控制和失败恢复；公网演示不承诺临时文件持久化，私域 chunk 不会进入公开分享接口。[^2]\n\n## 结论\n\n私域知识库用于补充组织内部上下文，但研究结果仍需保留文档与 chunk 级引用。\n\n[^1]: kb://demo_private_product_brief#demo_private_chunk_1\n[^2]: kb://demo_private_product_brief#demo_private_chunk_2",
+    "usage": {"prompt_tokens": 2600, "completion_tokens": 900, "tokens_used": 3500, "cost_rmb": 0.01, "elapsed_seconds": 24.0, "search_calls": 0, "crawl_calls": 0, "search_credits": 0},
+    "chunks": [
+      {"chunk_id": "demo_private_chunk_1", "chunk_index": 0, "page_num": 1, "content": "DeepFlow 将复杂主题拆分为研究计划，结合公开检索与私域知识库形成报告。"},
+      {"chunk_id": "demo_private_chunk_2", "chunk_index": 1, "page_num": 1, "content": "产品强调引用追溯、预算控制、失败恢复和用户数据隔离；演示环境不承诺临时文件持久化。"}
+    ]
+  }
+}
