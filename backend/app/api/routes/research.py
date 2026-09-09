@@ -100,6 +100,7 @@ async def create_research_task(
             owner_user_id=user["user_id"],
             status="clarifying",
             clarification_json=json.dumps(clarification_questions, ensure_ascii=False),
+            clarification_round=1,
         )
         return _task_response(task)
 
@@ -185,7 +186,33 @@ async def answer_clarifications(
     if answers:
         enriched_topic += "\n\n用户补充信息：\n" + "\n".join(f"- {answer}" for answer in answers)
 
-    task = update_task(task_id, topic=enriched_topic, status="coordinating")
+    try:
+        history = json.loads(task.get("clarification_history_json") or "[]")
+    except json.JSONDecodeError:
+        history = []
+    current_questions = json.loads(task.get("clarification_json") or "[]")
+    history.append({"round": int(task.get("clarification_round") or 1), "questions": current_questions, "answers": answers})
+    next_round = int(task.get("clarification_round") or 1) + 1
+    next_questions = _build_clarification_questions(enriched_topic, history=history)
+    if next_questions and next_round <= 3:
+        task = update_task(
+            task_id,
+            owner_user_id=user["user_id"],
+            topic=enriched_topic,
+            clarification_json=json.dumps(next_questions, ensure_ascii=False),
+            clarification_round=next_round,
+            clarification_history_json=json.dumps(history, ensure_ascii=False),
+        )
+        return _task_response(task)
+
+    task = update_task(
+        task_id,
+        owner_user_id=user["user_id"],
+        topic=enriched_topic,
+        status="coordinating",
+        clarification_json="[]",
+        clarification_history_json=json.dumps(history, ensure_ascii=False),
+    )
     enqueue_job(
         "research_plan",
         task_id=task_id,
@@ -274,11 +301,11 @@ async def retry_research_task(task_id: str, user: dict = Depends(require_login))
     return {"status": "queued", "task_id": task_id}
 
 
-def _build_clarification_questions(topic: str) -> list[str]:
+def _build_clarification_questions(topic: str, history: list[dict] | None = None) -> list[str]:
     """用低成本规则判断研究主题是否需要补充信息。"""
     text = topic.strip()
     normalized = text.lower()
-    questions: list[str] = []
+    candidates: list[str] = []
 
     broad_terms = {"分析", "研究", "调研", "趋势", "市场", "行业", "ai", "人工智能"}
     has_specific_object = len(text) >= 12 and text not in broad_terms
@@ -286,15 +313,24 @@ def _build_clarification_questions(topic: str) -> list[str]:
     has_time = any(k in text for k in ("202", "最近", "近", "今年", "当前", "最新", "未来"))
 
     if len(text) < 8 or not has_specific_object:
-        questions.append("你具体想研究哪个对象、行业、公司、技术或人群？")
+        candidates.append("你具体想研究哪个对象、行业、公司、技术或人群？")
+    if not any(k in text for k in ("用于", "目的", "决策", "面向", "帮助", "希望", "汇报", "求职")):
+        candidates.append("这份研究将用于什么决策或场景？谁是主要读者？")
     if not has_focus:
-        questions.append("你更关注哪个维度：市场、技术、竞品、政策、投资、用户，还是风险？")
+        candidates.append("你更关注哪个维度：市场、技术、竞品、政策、投资、用户，还是风险？")
     if not has_time:
-        questions.append("是否需要限定时间范围，例如最近一年、2026 年、近三年或最新动态？")
+        candidates.append("是否需要限定时间范围，例如最近一年、2026 年、近三年或最新动态？")
+    if not any(k in text for k in ("中国", "国内", "全球", "海外", "美国", "欧洲", "地区")):
+        candidates.append("研究范围聚焦中国、海外还是全球市场？")
     if "竞品" in text and not any(k in normalized for k in ("vs", "对比", "竞争", "公司")):
-        questions.append("是否有指定竞品或对比对象？")
+        candidates.append("是否有指定竞品或对比对象？")
 
-    return questions[:3]
+    asked = {
+        question
+        for item in history or []
+        for question in item.get("questions", [])
+    }
+    return [question for question in candidates if question not in asked][:2]
 
 
 def _task_response(task: dict) -> ResearchTaskResponse:
@@ -323,6 +359,7 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         total_steps=total_steps,
         report_id=f"rep_{task['task_id']}" if task.get("report_markdown") else None,
         clarification_questions=json.loads(task.get("clarification_json") or "[]"),
+        clarification_round=int(task.get("clarification_round") or 0),
         knowledge_enabled=bool(task.get("knowledge_enabled")),
         knowledge_document_ids=json.loads(task.get("knowledge_document_ids_json") or "[]"),
         is_demo=bool(task.get("is_demo")),

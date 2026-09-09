@@ -92,6 +92,7 @@ class ResearchTaskResponse(BaseModel):
     total_steps: int = 0
     report_id: Optional[str] = None
     clarification_questions: list[str] = Field(default_factory=list)
+    clarification_round: int = 0
     knowledge_enabled: bool = False
     knowledge_document_ids: list[str] = Field(default_factory=list)
     is_demo: bool = False

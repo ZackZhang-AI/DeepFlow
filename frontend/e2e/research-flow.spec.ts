@@ -43,6 +43,7 @@ function task(status: string, errorCode = "provider_timeout") {
     total_steps: 2,
     report_id: completed ? `rep_${TASK_ID}` : null,
     clarification_questions: [],
+    clarification_round: 0,
     knowledge_enabled: false,
     knowledge_document_ids: [],
     retryable: status === "failed",

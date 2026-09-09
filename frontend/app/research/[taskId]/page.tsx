@@ -246,7 +246,12 @@ export default function ResearchTaskPage() {
         <div className="mt-6 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 space-y-5">
             {task.status === "clarifying" && (
-              <ClarificationForm questions={task.clarification_questions || []} busy={busy} onSubmit={submitClarifications} />
+              <ClarificationForm
+                questions={task.clarification_questions || []}
+                round={task.clarification_round || 1}
+                busy={busy}
+                onSubmit={submitClarifications}
+              />
             )}
 
             {task.status === "awaiting_confirmation" && task.plan && (

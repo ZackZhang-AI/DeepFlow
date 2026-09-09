@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/Button";
 
 interface ClarificationFormProps {
   questions: string[];
+  round: number;
   busy: boolean;
   onSubmit: (answers: Record<string, string>) => Promise<void>;
 }
 
-export function ClarificationForm({ questions, busy, onSubmit }: ClarificationFormProps) {
+export function ClarificationForm({ questions, round, busy, onSubmit }: ClarificationFormProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const missing = useMemo(
@@ -25,8 +26,11 @@ export function ClarificationForm({ questions, busy, onSubmit }: ClarificationFo
 
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5" aria-labelledby="clarification-heading">
-      <h2 id="clarification-heading" className="text-lg font-semibold text-[var(--ink)]">补充研究信息</h2>
-      <p className="mt-1 text-sm leading-6 text-slate-600">这些信息会直接影响计划和搜索范围，请尽量具体。</p>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="clarification-heading" className="text-lg font-semibold text-[var(--ink)]">补充研究信息</h2>
+        <span className="text-xs font-medium text-amber-800">第 {Math.max(1, round)} / 3 轮</span>
+      </div>
+      <p className="mt-1 text-sm leading-6 text-slate-600">每轮只补充最关键的信息；范围足够后会自动进入研究计划。</p>
       <div className="mt-5 space-y-4">
         {questions.map((question, index) => {
           const key = String(index);
@@ -50,7 +54,7 @@ export function ClarificationForm({ questions, busy, onSubmit }: ClarificationFo
       </div>
       <div className="mt-5">
         <Button variant="primary" size="md" loading={busy} onClick={() => void submit()}>
-          提交并生成计划
+          {round >= 3 ? "提交并生成计划" : "提交并继续"}
         </Button>
       </div>
     </section>

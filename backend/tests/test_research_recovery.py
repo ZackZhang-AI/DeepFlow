@@ -223,6 +223,19 @@ def test_research_sources_keep_step_provenance(tmp_path, monkeypatch):
     assert sources[0]["steps"] == [{"step_index": 1, "step_title": "市场规模"}]
 
 
+def test_clarification_questions_progress_without_repeating():
+    from backend.app.api.routes.research import _build_clarification_questions
+
+    first = _build_clarification_questions("研究 AI")
+    assert 1 <= len(first) <= 2
+    second = _build_clarification_questions(
+        "研究 AI\n用户补充信息：\n- 面向产品经理决策",
+        history=[{"questions": first}],
+    )
+    assert not set(first) & set(second)
+    assert len(second) <= 2
+
+
 def test_create_research_validates_and_returns_selected_knowledge(tmp_path, monkeypatch):
     _use_temp_db(tmp_path, monkeypatch)
     from backend.app.api.routes import research as research_routes
