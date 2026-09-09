@@ -269,6 +269,8 @@ python -m evals.live_eval --formal
 
 - 当前默认使用 SQLite，适合原型、MVP 和单机验证；大规模生产部署前建议评估 PostgreSQL/pgvector。
 - 工具启用状态按用户持久化到 SQLite。
+- 技术、论文和文献类步骤在搜索预算至少为 2 次时，会使用公开 arXiv Atom API 补充学术来源；该调用不消耗 Tavily credits。
+- 远程 MCP 工具通过 `MCP_TOOLS_JSON` 显式登记，支持用户级启停、测试调用和工作流 `MCP Tool` 节点；未配置时不会产生远程请求。
 - 私域知识库已具备 PRD 所需检索闭环，但未引入 Milvus、MinIO、Celery、RAGAS 等 PRD 外企业栈。
 - 知识库索引会记录 embedding Provider、模型、维度和版本；配置变化后需重建索引，不会静默混用旧向量。
 - 预算为报告预留额度而提前停止时，任务会交付已有报告并明确标记“部分覆盖”，不会伪装为完整覆盖。
@@ -276,6 +278,17 @@ python -m evals.live_eval --formal
 - 工作流为顺序配置式可运行版本；`edges` 尚不参与条件分支执行。
 - 公共部署默认 `DISABLE_SANDBOX_TOOL=true`；只有 Docker readiness 正常时才应开启 Coder。
 - 云 TTS、计费、企业 SSO、复杂审批流不在当前 PRD 实现范围内。
+
+### 远程 MCP 配置
+
+每个工具只暴露非敏感元数据，认证令牌由 `auth_env` 指向单独的服务端环境变量：
+
+```env
+MCP_TOOLS_JSON=[{"server":"crm","url":"https://mcp.example.com/rpc","tool_name":"company_lookup","name":"企业查询","description":"查询企业资料","auth_env":"CRM_MCP_TOKEN"}]
+CRM_MCP_TOKEN=<secret>
+```
+
+当前实现支持 MCP Streamable HTTP 的 `initialize` 与 `tools/call`。公网演示默认不配置远程 MCP，避免访客触发第三方调用。
 
 ## 项目结构
 

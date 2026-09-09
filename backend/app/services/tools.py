@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -10,8 +11,10 @@ from backend.app.core.runtime_config import sandbox_tool_disabled
 from backend.app.repositories.tool import get_tool_setting, set_tool_setting
 from backend.app.services.embedding import EmbeddingError
 from backend.app.services.knowledge import search_knowledge_chunks
+from backend.app.services.mcp import MCPToolConfig, call_mcp_tool, configured_mcp_tools
 from cli.tools.sandbox import execute_python
 from cli.tools.web_search import web_search
+from cli.tools.arxiv_search import search_arxiv
 
 
 ToolHandler = Callable[[dict[str, Any], dict], Awaitable[dict[str, Any]]]
@@ -50,6 +53,13 @@ _TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
             "rerank": "boolean, optional",
         },
     ),
+    "arxiv_search": ToolDefinition(
+        tool_id="arxiv_search",
+        name="arXiv Search",
+        category="research",
+        description="Search recent academic papers through the public arXiv API.",
+        input_schema={"query": "string, required", "max_results": "number, optional, default 5"},
+    ),
     "python_sandbox": ToolDefinition(
         tool_id="python_sandbox",
         name="Python Sandbox",
@@ -69,6 +79,23 @@ def _tool_enabled(tool_id: str, user_id: str) -> bool:
     return True if configured is None else configured
 
 
+def _mcp_configs() -> dict[str, MCPToolConfig]:
+    return {config.tool_id: config for config in configured_mcp_tools()}
+
+
+def _tool_definitions() -> dict[str, ToolDefinition]:
+    definitions = dict(_TOOL_DEFINITIONS)
+    for config in _mcp_configs().values():
+        definitions[config.tool_id] = ToolDefinition(
+            tool_id=config.tool_id,
+            name=config.name,
+            description=config.description,
+            category="mcp",
+            input_schema={"arguments": "object, passed to the remote MCP tool"},
+        )
+    return definitions
+
+
 def list_tools(user_id: str) -> list[dict[str, Any]]:
     return [
         {
@@ -79,12 +106,12 @@ def list_tools(user_id: str) -> list[dict[str, Any]]:
             "enabled": _tool_enabled(tool.tool_id, user_id),
             "input_schema": tool.input_schema,
         }
-        for tool in _TOOL_DEFINITIONS.values()
+        for tool in _tool_definitions().values()
     ]
 
 
 def get_tool(tool_id: str, user_id: str) -> dict[str, Any] | None:
-    tool = _TOOL_DEFINITIONS.get(tool_id)
+    tool = _tool_definitions().get(tool_id)
     if tool is None:
         return None
     return {
@@ -98,14 +125,14 @@ def get_tool(tool_id: str, user_id: str) -> dict[str, Any] | None:
 
 
 def set_tool_enabled(tool_id: str, enabled: bool, user_id: str) -> dict[str, Any] | None:
-    if tool_id not in _TOOL_DEFINITIONS:
+    if tool_id not in _tool_definitions():
         return None
     set_tool_setting(user_id, tool_id, enabled)
     return get_tool(tool_id, user_id)
 
 
 async def test_tool(tool_id: str, input_data: dict[str, Any], user: dict) -> dict[str, Any]:
-    tool = _TOOL_DEFINITIONS.get(tool_id)
+    tool = _tool_definitions().get(tool_id)
     if tool is None:
         raise ValueError("Tool not found")
     if not _tool_enabled(tool_id, user["user_id"]):
@@ -115,10 +142,14 @@ async def test_tool(tool_id: str, input_data: dict[str, Any], user: dict) -> dic
     try:
         if tool_id == "web_search":
             payload = await _test_web_search(input_data, user)
+        elif tool_id == "arxiv_search":
+            payload = await _test_arxiv_search(input_data, user)
         elif tool_id == "knowledge_search":
             payload = await _test_knowledge_search(input_data, user)
         elif tool_id == "python_sandbox":
             payload = await _test_python_sandbox(input_data, user)
+        elif tool_id.startswith("mcp:"):
+            payload = await _test_mcp_tool(tool_id, input_data)
         else:
             payload = {"input_summary": "", "output_summary": "", "error": "Unsupported tool"}
 
@@ -183,6 +214,17 @@ async def _test_knowledge_search(input_data: dict[str, Any], user: dict) -> dict
     }
 
 
+async def _test_arxiv_search(input_data: dict[str, Any], _user: dict) -> dict[str, Any]:
+    query = _required_text(input_data, "query")
+    max_results = _bounded_int(input_data.get("max_results"), default=5, minimum=1, maximum=10)
+    batch = await search_arxiv(query, max_results=max_results)
+    return {
+        "input_summary": f"query={query}; max_results={max_results}; credits=0",
+        "output_summary": "\n".join(f"- {item.title}: {item.url}" for item in batch.results),
+        "raw_output": [item.model_dump() for item in batch.results],
+    }
+
+
 async def _test_python_sandbox(input_data: dict[str, Any], _user: dict) -> dict[str, Any]:
     code = _required_text(input_data, "code")
     timeout = _bounded_int(input_data.get("timeout"), default=10, minimum=1, maximum=30)
@@ -197,6 +239,22 @@ async def _test_python_sandbox(input_data: dict[str, Any], _user: dict) -> dict[
             "stderr": sandbox_result.stderr,
             "elapsed_seconds": sandbox_result.elapsed_seconds,
         },
+    }
+
+
+async def _test_mcp_tool(tool_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
+    config = _mcp_configs().get(tool_id)
+    if config is None:
+        raise ValueError("MCP tool configuration was removed")
+    arguments = input_data.get("arguments", input_data)
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments must be a JSON object")
+    result = await call_mcp_tool(config, arguments)
+    text = json.dumps(result, ensure_ascii=False)
+    return {
+        "input_summary": _summarize_input(arguments),
+        "output_summary": text[:4000],
+        "raw_output": result,
     }
 
 

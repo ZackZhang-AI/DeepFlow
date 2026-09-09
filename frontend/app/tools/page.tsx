@@ -18,6 +18,7 @@ type BusyMap = Record<string, boolean>;
 
 const DEFAULT_INPUTS: Record<string, string> = {
   web_search: JSON.stringify({ query: "AI agent research workflow", max_results: 3 }, null, 2),
+  arxiv_search: JSON.stringify({ query: "retrieval augmented generation", max_results: 5 }, null, 2),
   knowledge_search: JSON.stringify({ query: "DeepFlow", limit: 5, rerank: false }, null, 2),
   python_sandbox: JSON.stringify({ code: "print('hello from DeepFlow sandbox')", timeout: 5 }, null, 2),
 };
@@ -26,6 +27,7 @@ function categoryLabel(category: string) {
   if (category === "research") return "研究";
   if (category === "knowledge") return "知识库";
   if (category === "code") return "代码";
+  if (category === "mcp") return "远程 MCP";
   return category || "工具";
 }
 
@@ -46,7 +48,7 @@ function parseJsonInput(value: string) {
 }
 
 function ToolIcon({ category }: { category: string }) {
-  const label = category === "code" ? "</>" : category === "knowledge" ? "KB" : "W";
+  const label = category === "code" ? "</>" : category === "knowledge" ? "KB" : category === "mcp" ? "MCP" : "W";
   return (
     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-cyan-100 bg-cyan-50 text-xs font-black text-cyan-700">
       {label}

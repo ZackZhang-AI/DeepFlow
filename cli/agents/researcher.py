@@ -17,6 +17,7 @@ from cli.agents.base import LLMProvider
 from cli.agents.prompt_loader import load_prompt
 from cli.tools.web_search import web_search, web_search_multi
 from cli.tools.web_crawl import crawl_url, crawl_urls
+from cli.tools.arxiv_search import search_arxiv
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,8 @@ async def research_step(
     # 解析查询
     queries = [q.strip() for q in queries_text.split("\n") if q.strip()]
     search_limit = max_search_calls or Config.MAX_SEARCH_CALLS
-    queries = queries[:search_limit]
+    academic_requested = _needs_academic_sources(step) and search_limit >= 2
+    queries = queries[: search_limit - 1 if academic_requested else search_limit]
 
     if not queries:
         queries = [step.title]
@@ -101,6 +103,15 @@ async def research_step(
         search_depth=search_depth,
     )
     search_results = search_batch.results
+    academic_search_calls = 0
+    if academic_requested:
+        try:
+            academic_batch = await search_arxiv(queries[0], max_results=5)
+            seen_urls = {item.url for item in search_results}
+            search_results.extend(item for item in academic_batch.results if item.url not in seen_urls)
+            academic_search_calls = 1
+        except Exception as exc:
+            logger.warning("  arXiv 检索不可用，继续使用通用搜索: %s", exc)
     logger.info(f"  搜索返回 {len(search_results)} 条结果")
 
     if not search_results and not local_references:
@@ -171,13 +182,21 @@ async def research_step(
         step_index=step_index,
         search_results=search_results,
         crawl_results=successful_crawls,
-        search_calls=len(queries),
+        search_calls=len(queries) + academic_search_calls,
         crawl_calls=len(urls_to_crawl),
         search_credits=search_batch.credits,
         local_references=local_references,
     )
 
     return finding, total_prompt, total_completion
+
+
+def _needs_academic_sources(step: ResearchStep) -> bool:
+    text = f"{step.title} {step.description}".lower()
+    return any(
+        keyword in text
+        for keyword in ("论文", "学术", "文献", "算法", "技术原理", "paper", "academic", "literature")
+    )
 
 
 def _format_search_results(results: list[SearchResult]) -> str:
