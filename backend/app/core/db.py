@@ -96,6 +96,8 @@ def init_db() -> None:
             retryable INTEGER DEFAULT 0,
             last_heartbeat_at TEXT,
             failed_phase TEXT DEFAULT '',
+            result_quality TEXT DEFAULT 'complete',
+            coverage_json TEXT DEFAULT '{}',
             is_demo INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -360,6 +362,8 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "retryable", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "last_heartbeat_at", "TEXT")
     _ensure_column(conn, "research_tasks", "failed_phase", "TEXT DEFAULT ''")
+    _ensure_column(conn, "research_tasks", "result_quality", "TEXT DEFAULT 'complete'")
+    _ensure_column(conn, "research_tasks", "coverage_json", "TEXT DEFAULT '{}'")
     _ensure_column(conn, "research_tasks", "is_demo", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "research_tasks", "knowledge_enabled", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "knowledge_document_ids_json", "TEXT DEFAULT '[]'")

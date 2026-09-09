@@ -30,6 +30,15 @@ export interface ResearchTask {
   retryable: boolean;
   error_code: string;
   error_message: string;
+  result_quality: "complete" | "partial";
+  coverage: {
+    planned_steps?: number;
+    completed_steps?: number;
+    skipped_steps?: number;
+    skipped_from_step?: number | null;
+    reason?: string;
+    sources_count?: number;
+  };
   last_event_seq: number;
   plan: ResearchPlan | null;
   budget: TaskBudget;

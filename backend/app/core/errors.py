@@ -62,6 +62,9 @@ def classify_failure(exc: BaseException) -> Failure:
     message = str(exc).strip() or exc.__class__.__name__
     text = message.lower()
 
+    if "report quality" in text:
+        return Failure("report_quality_failed", message, True)
+
     if any(
         token in text
         for token in ("402", "insufficient balance", "payment required", "余额不足")

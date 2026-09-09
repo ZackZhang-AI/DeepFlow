@@ -292,6 +292,8 @@ def _task_response(task: dict) -> ResearchTaskResponse:
         retryable=bool(task.get("retryable")),
         error_code=task.get("error_code") or "",
         error_message=task.get("error_message") or "",
+        result_quality=task.get("result_quality") or "complete",
+        coverage=json.loads(task.get("coverage_json") or "{}"),
         last_event_seq=get_last_event_sequence(task["task_id"]),
         plan=plan,
         budget=budget.model_dump(),

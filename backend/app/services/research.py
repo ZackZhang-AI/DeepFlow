@@ -22,7 +22,7 @@ from cli.models import ResearchPlan, ResearchFinding, SourceReference, SourceTyp
 from cli.agents.planner import generate_plan
 from cli.agents.researcher import research_step
 from cli.agents.coder import process_step
-from cli.agents.reporter import generate_report
+from cli.agents.reporter import ReportQualityError, generate_report, validate_report_quality
 from backend.app.repositories.research import (
     update_task,
     save_step,
@@ -182,6 +182,8 @@ async def execute_research_task(task_id: str):
         persisted_steps = {row["step_index"]: row for row in list_steps(task_id)}
         findings: list[ResearchFinding] = []
         total_sources = 0
+        budget_limited = False
+        skipped_from_step: int | None = None
         for step_num, row in persisted_steps.items():
             if row.get("status") != "completed":
                 continue
@@ -218,6 +220,8 @@ async def execute_research_task(task_id: str):
                     skipped_from_step=step_num,
                     report_reserve_tokens=budget.report_reserve_tokens,
                 )
+                budget_limited = True
+                skipped_from_step = step_num
                 break
 
             update_task(task_id, current_step=step_num)
@@ -264,6 +268,8 @@ async def execute_research_task(task_id: str):
                             skipped_from_step=step_num,
                             report_reserve_tokens=budget.report_reserve_tokens,
                         )
+                        budget_limited = True
+                        skipped_from_step = step_num
                         break
                     raise
             else:
@@ -345,6 +351,8 @@ async def execute_research_task(task_id: str):
                     skipped_from_step=step_num + 1,
                     report_reserve_tokens=budget.report_reserve_tokens,
                 )
+                budget_limited = step_num < len(plan.steps)
+                skipped_from_step = step_num + 1 if budget_limited else None
                 break
 
         if not findings:
@@ -381,6 +389,12 @@ async def execute_research_task(task_id: str):
             max_output_tokens=report_output_limit,
             max_finding_chars_per_step=finding_context_limit,
         )
+        allowed_urls = {reference.url for finding in findings for reference in finding.references}
+        report_issues = validate_report_quality(report, allowed_urls)
+        if report_issues:
+            raise ReportQualityError(
+                "Report quality validation failed: " + ", ".join(report_issues)
+            )
         save_agent_run(
             task_id=task_id,
             agent_name="Reporter",
@@ -418,10 +432,20 @@ async def execute_research_task(task_id: str):
             + estimate_cost_rmb(reporter_model, pt, ct)
         )
         now = datetime.now().isoformat()
+        coverage = {
+            "planned_steps": len(plan.steps),
+            "completed_steps": len(findings),
+            "skipped_steps": max(0, len(plan.steps) - len(findings)),
+            "skipped_from_step": skipped_from_step,
+            "reason": "budget_reserved_for_report" if budget_limited else "",
+            "sources_count": total_sources,
+        }
 
         update_task(
             task_id,
             status="completed",
+            result_quality="partial" if budget_limited else "complete",
+            coverage_json=json.dumps(coverage, ensure_ascii=False),
             report_markdown=report,
             sources_count=total_sources,
             search_calls=existing_search_calls + total_search_calls,
@@ -441,6 +465,8 @@ async def execute_research_task(task_id: str):
             title=plan.title,
             sources_count=total_sources,
             tokens_used=total_tokens,
+            result_quality="partial" if budget_limited else "complete",
+            coverage=coverage,
         )
 
     except Exception as e:

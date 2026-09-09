@@ -21,6 +21,10 @@ from cli.agents.prompt_loader import load_prompt
 logger = logging.getLogger(__name__)
 
 
+class ReportQualityError(RuntimeError):
+    pass
+
+
 async def generate_report(
     plan: ResearchPlan,
     findings: list[ResearchFinding],
@@ -112,13 +116,48 @@ async def generate_report(
     return response, prompt_tokens, completion_tokens
 
 
+def validate_report_quality(markdown: str, allowed_urls: set[str]) -> list[str]:
+    """Return stable quality issues before a generated report is persisted as complete."""
+    text = (markdown or "").strip()
+    issues: list[str] = []
+    headings = "\n".join(re.findall(r"^#{1,3}\s+(.+)$", text, flags=re.MULTILINE)).lower()
+    if len(text) < 200:
+        issues.append("report_too_short")
+    if not re.search(r"^#\s+\S+", text, flags=re.MULTILINE):
+        issues.append("missing_title")
+    if not any(name in headings for name in ("结论", "摘要", "key points", "executive summary", "abstract")):
+        issues.append("missing_summary")
+    if not any(name in headings for name in ("主要分析", "详细分析", "深度分析", "detailed analysis", "discussion", "新闻主体", "核心干货")):
+        issues.append("missing_analysis")
+    if not any(name in headings for name in ("来源", "引用", "key citations", "references")):
+        issues.append("missing_sources_section")
+    cited_urls = set(re.findall(r"(?:https?://[^\s<>)\]]+|kb://[^\s<>)\]]+)", text))
+    if allowed_urls and not (cited_urls & allowed_urls):
+        issues.append("missing_recorded_citation")
+    if text.count("```") % 2:
+        issues.append("truncated_code_block")
+    if re.search(r"^#{1,3}\s+[^\n]+\s*$", text.split("\n\n")[-1], flags=re.MULTILINE):
+        issues.append("empty_final_section")
+    return issues
+
+
 def _remove_unrecorded_links(markdown: str, allowed_urls: set[str]) -> str:
     """Keep report links limited to sources recorded by Researcher."""
     def replace(match: re.Match[str]) -> str:
         label, url = match.group(1), match.group(2).strip()
         return match.group(0) if url in allowed_urls else label
 
-    return re.sub(r"\[([^\]]+)\]\((https?://[^)]+|kb://[^)]+)\)", replace, markdown)
+    cleaned = re.sub(r"\[([^\]]+)\]\((https?://[^)]+|kb://[^)]+)\)", replace, markdown)
+
+    def replace_reference(match: re.Match[str]) -> str:
+        return match.group(0) if match.group(2).strip() in allowed_urls else ""
+
+    cleaned = re.sub(
+        r"(?m)^\s*(\[[^\]]+\]:)\s*(https?://\S+|kb://\S+)\s*$",
+        replace_reference,
+        cleaned,
+    )
+    return cleaned
 
 
 def _get_style_instructions(style: str, locale: str) -> str:

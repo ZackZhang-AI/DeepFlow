@@ -100,6 +100,8 @@ class ResearchTaskResponse(BaseModel):
     retryable: bool = False
     error_code: str = ""
     error_message: str = ""
+    result_quality: Literal["complete", "partial"] = "complete"
+    coverage: dict = Field(default_factory=dict)
     embedding_provider: str = ""
     embedding_model: str = ""
     embedding_dimensions: int = 0

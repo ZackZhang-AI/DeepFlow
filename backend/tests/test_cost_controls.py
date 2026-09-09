@@ -150,7 +150,13 @@ def test_research_reserves_budget_and_still_generates_report(tmp_path, monkeypat
 
     async def fake_generate_report(**kwargs):
         calls["report"] += 1
-        return "# 完整报告\n\n## 结论\n\n核心结论。", 100, 100
+        return (
+            "# 完整报告\n\n## 结论\n\n核心结论。\n\n"
+            "## 主要分析\n\n" + ("已有证据支持当前阶段判断。" * 20) + "\n\n"
+            "## 来源\n\n当前步骤未产生外部引用。",
+            100,
+            100,
+        )
 
     monkeypatch.setattr(research_service, "research_step", fake_research_step)
     monkeypatch.setattr(research_service, "generate_report", fake_generate_report)
@@ -162,6 +168,8 @@ def test_research_reserves_budget_and_still_generates_report(tmp_path, monkeypat
     assert calls == {"research": 1, "report": 1}
     assert completed["status"] == "completed"
     assert "完整报告" in completed["report_markdown"]
+    assert completed["result_quality"] == "partial"
+    assert __import__("json").loads(completed["coverage_json"])["completed_steps"] == 1
 
 
 def test_legacy_budget_failure_is_upgraded_and_retryable(tmp_path, monkeypatch):
@@ -300,6 +308,18 @@ def test_fast_reporter_honors_output_budget(monkeypatch):
     assert captured["max_tokens"] == 2048
     assert len(captured["user_message"]) < 3000
     assert "## 结论、## 主要分析、## 来源" in captured["user_message"]
+
+
+def test_report_quality_rejects_missing_sections_and_accepts_traceable_report():
+    from cli.agents.reporter import validate_report_quality
+
+    assert "missing_analysis" in validate_report_quality("# 标题\n\n短内容", set())
+    valid = (
+        "# 标题\n\n## 结论\n\n结论内容。\n\n## 主要分析\n\n"
+        + ("证据支持该判断。" * 30)
+        + "\n\n## 来源\n\n- [来源](https://example.com/source)"
+    )
+    assert validate_report_quality(valid, {"https://example.com/source"}) == []
 
 
 def test_fast_researcher_honors_summary_budget(monkeypatch):
