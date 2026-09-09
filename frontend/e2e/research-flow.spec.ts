@@ -74,6 +74,8 @@ function task(status: string, errorCode = "provider_timeout") {
       reporter_model: "deepseek-v4-flash",
     },
     budget_percent: 6,
+    result_quality: "complete",
+    coverage: {},
   };
 }
 
@@ -120,6 +122,21 @@ async function installApiMock(page: Page, initialStatus: string, errorCode = "pr
     }
     if (path.endsWith(`/research-tasks/${TASK_ID}/agent-runs`)) {
       await route.fulfill({ json: [] });
+      return;
+    }
+    if (path.endsWith(`/research-tasks/${TASK_ID}/sources`)) {
+      await route.fulfill({
+        json: [{
+          title: "企业知识库",
+          url: "kb://doc-e2e#chunk-e2e",
+          source_type: "knowledge_base",
+          snippet: "可追溯的原文证据",
+          published_at: null,
+          retrieved_at: now,
+          confidence: 0.9,
+          steps: [{ step_index: 1, step_title: "市场证据" }],
+        }],
+      });
       return;
     }
     if (path.endsWith(`/research-tasks/${TASK_ID}`)) {

@@ -46,6 +46,29 @@ export function TaskBudgetPanel({ task }: { task: ResearchTask }) {
         />
       </div>
 
+      {task.result_quality === "partial" && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          本报告为部分覆盖：已完成 {task.coverage.completed_steps ?? task.current_step} / {task.coverage.planned_steps ?? task.total_steps} 个步骤。已有发现和来源均已保留，可调整计划后继续研究。
+        </div>
+      )}
+
+      {task.coverage.questions && task.coverage.questions.length > 0 && (
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <p className="text-xs font-medium text-[var(--muted)]">问题覆盖</p>
+          <ul className="mt-2 space-y-2">
+            {task.coverage.questions.map((item) => (
+              <li key={item.step_index} className="flex gap-2 text-xs leading-5">
+                <span className={item.status === "completed" ? "text-emerald-700" : "text-amber-700"}>
+                  {item.status === "completed" ? "已覆盖" : "未覆盖"}
+                </span>
+                <span className="min-w-0 flex-1 text-slate-600">{item.question}</span>
+                <span className="shrink-0 text-slate-400">{item.sources_count} 来源</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
         <div>
           <dt className="text-[var(--muted)]">预计费用</dt>

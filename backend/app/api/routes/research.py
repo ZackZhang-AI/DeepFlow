@@ -20,6 +20,7 @@ from backend.app.repositories.research import (
     create_task,
     get_task,
     list_agent_runs,
+    list_steps,
     list_tasks,
     get_usage_summary,
     update_task,
@@ -116,6 +117,42 @@ async def create_research_task(
 @router.get("/usage-summary", response_model=UsageSummary)
 async def usage_summary(user: dict = Depends(require_login)):
     return UsageSummary.model_validate(get_usage_summary(user["user_id"]))
+
+
+@router.get("/{task_id}/sources")
+async def get_research_sources(task_id: str, user: dict = Depends(require_login)):
+    """Return persisted, deduplicated evidence with its research-step provenance."""
+    task = require_task_access(task_id, user["user_id"])
+    by_url: dict[str, dict] = {}
+    for step in list_steps(task_id, user_id=task["user_id"]):
+        try:
+            references = json.loads(step.get("sources_json") or "[]")
+        except json.JSONDecodeError:
+            references = []
+        for reference in references:
+            url = str(reference.get("url") or "").strip()
+            if not url:
+                continue
+            item = by_url.setdefault(
+                url,
+                {
+                    "title": reference.get("title") or url,
+                    "url": url,
+                    "source_type": reference.get("source_type") or "web",
+                    "snippet": reference.get("snippet") or "",
+                    "published_at": reference.get("published_at"),
+                    "retrieved_at": reference.get("retrieved_at"),
+                    "confidence": float(reference.get("confidence") or 0),
+                    "steps": [],
+                },
+            )
+            item["steps"].append(
+                {
+                    "step_index": int(step.get("step_index") or 0),
+                    "step_title": step.get("title") or "",
+                }
+            )
+    return list(by_url.values())
 
 
 @router.get("/{task_id}", response_model=ResearchTaskResponse)

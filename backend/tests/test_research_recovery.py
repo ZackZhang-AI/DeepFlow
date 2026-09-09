@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -192,6 +193,34 @@ def test_research_task_persists_private_knowledge_selection(tmp_path, monkeypatc
 
     assert response.knowledge_enabled is True
     assert response.knowledge_document_ids == ["doc_a", "doc_b"]
+
+
+def test_research_sources_keep_step_provenance(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.api.routes.research import get_research_sources
+
+    task = db.create_task("task_sources", "evidence", user_id=db.LOCAL_DEFAULT_USER_ID)
+    step_id = db.save_step(task["task_id"], 1, "市场规模", "核对市场规模")
+    db.update_step(
+        step_id,
+        status="completed",
+        sources_json=[
+            {
+                "title": "权威来源",
+                "url": "https://example.com/source",
+                "source_type": "web",
+                "snippet": "关键证据摘要",
+                "published_at": "2026-01-01",
+                "confidence": 0.8,
+            }
+        ],
+    )
+
+    sources = asyncio.run(
+        get_research_sources(task["task_id"], user={"user_id": db.LOCAL_DEFAULT_USER_ID})
+    )
+    assert sources[0]["title"] == "权威来源"
+    assert sources[0]["steps"] == [{"step_index": 1, "step_title": "市场规模"}]
 
 
 def test_create_research_validates_and_returns_selected_knowledge(tmp_path, monkeypatch):

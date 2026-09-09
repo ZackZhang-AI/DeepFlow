@@ -439,6 +439,15 @@ async def execute_research_task(task_id: str):
             "skipped_from_step": skipped_from_step,
             "reason": "budget_reserved_for_report" if budget_limited else "",
             "sources_count": total_sources,
+            "questions": [
+                {
+                    "step_index": index,
+                    "question": step.description or step.title,
+                    "status": "completed" if index <= len(findings) else "skipped",
+                    "sources_count": len(findings[index - 1].references) if index <= len(findings) else 0,
+                }
+                for index, step in enumerate(plan.steps, 1)
+            ],
         }
 
         update_task(

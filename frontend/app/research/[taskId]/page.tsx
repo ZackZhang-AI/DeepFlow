@@ -9,6 +9,7 @@ import {
   getAuthToken,
   getReport,
   getTask,
+  getTaskEvidence,
   redirectToLogin,
   retryResearchTask,
   subscribeToEvents,
@@ -22,7 +23,7 @@ import { ResearchProgress } from "@/components/research/ResearchProgress";
 import { ResearchStatusHeader } from "@/components/research/ResearchStatusHeader";
 import { SourceInspector } from "@/components/research/SourceInspector";
 import { TaskBudgetPanel } from "@/components/research/TaskBudgetPanel";
-import type { Report, ResearchStep, ResearchTask } from "@/lib/types";
+import type { EvidenceSource, Report, ResearchStep, ResearchTask } from "@/lib/types";
 
 interface DisplayEvent {
   type: string;
@@ -39,6 +40,7 @@ export default function ResearchTaskPage() {
   const [task, setTask] = useState<ResearchTask | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [events, setEvents] = useState<DisplayEvent[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -52,6 +54,9 @@ export default function ResearchTaskPage() {
   const loadTask = useCallback(async () => {
     const nextTask = await getTask(taskId);
     setTask(nextTask);
+    if (["researching", "generating_report", "completed", "failed"].includes(nextTask.status)) {
+      getTaskEvidence(taskId).then(setEvidence).catch(() => undefined);
+    }
 
     if (nextTask.status === "completed") {
       try {
@@ -74,6 +79,9 @@ export default function ResearchTaskPage() {
       .then(async (nextTask) => {
         if (!active) return;
         setTask(nextTask);
+        if (["researching", "generating_report", "completed", "failed"].includes(nextTask.status)) {
+          getTaskEvidence(taskId).then((items) => active && setEvidence(items)).catch(() => undefined);
+        }
         if (nextTask.status === "completed") {
           const nextReport = await getReport(taskId);
           if (active) setReport(nextReport);
@@ -277,7 +285,7 @@ export default function ResearchTaskPage() {
 
           <aside className="min-w-0 space-y-5 lg:sticky lg:top-20 lg:self-start">
             <TaskBudgetPanel task={task} />
-            <SourceInspector events={events} report={report} />
+            <SourceInspector events={events} report={report} evidence={evidence} />
             {task.plan && task.status !== "awaiting_confirmation" && !(task.status === "failed" && editingFailedPlan) && (
               <section className="rounded-xl border border-[var(--border)] bg-white p-4" aria-labelledby="plan-summary-heading">
                 <h2 id="plan-summary-heading" className="text-base font-semibold text-[var(--ink)]">研究计划</h2>

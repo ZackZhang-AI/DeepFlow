@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { listKnowledgeDocumentChunks } from "@/lib/api";
-import type { KnowledgeChunk, Report } from "@/lib/types";
+import type { EvidenceSource, KnowledgeChunk, Report } from "@/lib/types";
 
 interface SourceEvent {
   data: Record<string, unknown>;
@@ -15,18 +15,28 @@ function extractSources(value: unknown): string[] {
   return matches.map((item) => item.replace(/[.,;]+$/, ""));
 }
 
-export function SourceInspector({ events, report }: { events: SourceEvent[]; report: Report | null }) {
+export function SourceInspector({
+  events,
+  report,
+  evidence,
+}: {
+  events: SourceEvent[];
+  report: Report | null;
+  evidence: EvidenceSource[];
+}) {
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedChunk, setSelectedChunk] = useState<KnowledgeChunk | null>(null);
   const [chunkLoading, setChunkLoading] = useState(false);
   const [chunkError, setChunkError] = useState<string | null>(null);
   const sources = useMemo(
     () => Array.from(new Set([
+      ...evidence.map((item) => item.url),
       ...events.flatMap((event) => extractSources(event.data)),
       ...extractSources(report?.content_markdown ?? ""),
     ])),
-    [events, report],
+    [evidence, events, report],
   );
+  const evidenceByUrl = useMemo(() => new Map(evidence.map((item) => [item.url, item])), [evidence]);
 
   const copySource = async (source: string) => {
     await navigator.clipboard.writeText(source);
@@ -75,11 +85,20 @@ export function SourceInspector({ events, report }: { events: SourceEvent[]; rep
         <ol className="mt-4 space-y-2">
           {sources.map((source, index) => {
             const isKnowledge = source.startsWith("kb://");
+            const detail = evidenceByUrl.get(source);
             return (
               <li key={source} className="flex min-w-0 items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-xs font-semibold text-slate-600">{index + 1}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-slate-700">{isKnowledge ? "知识库片段" : "公开网页"}</p>
+                  <p className="text-xs font-semibold text-slate-700">{detail?.title || (isKnowledge ? "知识库片段" : "公开网页")}</p>
+                  {(detail?.published_at || detail?.steps.length) && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {detail.published_at ? `发布 ${detail.published_at}` : ""}
+                      {detail.published_at && detail.steps.length ? " · " : ""}
+                      {detail.steps.length ? `用于步骤 ${detail.steps.map((step) => step.step_index).join("、")}` : ""}
+                    </p>
+                  )}
+                  {detail?.snippet && <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-600">{detail.snippet}</p>}
                   <p className="mt-1 break-all text-xs leading-5 text-[var(--muted)]">{source}</p>
                 </div>
                 {isKnowledge ? (

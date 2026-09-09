@@ -28,6 +28,7 @@ import type {
   WorkspaceRole,
   BudgetProfile,
   UsageSummary,
+  EvidenceSource,
 } from "@/lib/types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -214,6 +215,10 @@ export async function answerClarifications(taskId: string, answers: Record<strin
 
 export async function getTask(taskId: string) {
   return authJson<ResearchTask>(`/api/research-tasks/${taskId}`, undefined, `任务不存在：${taskId}`);
+}
+
+export async function getTaskEvidence(taskId: string) {
+  return authJson<EvidenceSource[]>(`/api/research-tasks/${taskId}/sources`, undefined, "来源证据加载失败");
 }
 
 export async function retryResearchTask(taskId: string) {

@@ -38,6 +38,12 @@ export interface ResearchTask {
     skipped_from_step?: number | null;
     reason?: string;
     sources_count?: number;
+    questions?: Array<{
+      step_index: number;
+      question: string;
+      status: "completed" | "skipped";
+      sources_count: number;
+    }>;
   };
   last_event_seq: number;
   plan: ResearchPlan | null;
@@ -51,6 +57,14 @@ export interface SharedSource {
   title: string;
   url: string;
   source_type: string;
+}
+
+export interface EvidenceSource extends SharedSource {
+  snippet: string;
+  published_at: string | null;
+  retrieved_at: string | null;
+  confidence: number;
+  steps: Array<{ step_index: number; step_title: string }>;
 }
 
 export type BudgetProfile = "fast" | "standard" | "deep";
@@ -211,6 +225,10 @@ export interface KnowledgeDocument {
   status: KnowledgeDocumentStatus;
   chunk_count: number;
   error_message: string;
+  embedding_provider: string;
+  embedding_model: string;
+  embedding_dimensions: number;
+  index_version: string;
   created_at: string;
   updated_at: string;
 }
