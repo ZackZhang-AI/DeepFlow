@@ -79,9 +79,10 @@ async def generate_research_plan_task(
         _ensure_token_budget(pt + ct, budget.max_tokens)
 
         plan_dict = plan.model_dump()
+        auto_confirm = bool(task.get("auto_confirm_plan"))
         update_task(
             task_id,
-            status="awaiting_confirmation",
+            status="queued" if auto_confirm else "awaiting_confirmation",
             plan_json=json.dumps(plan_dict, ensure_ascii=False),
             total_steps=len(plan.steps),
             prompt_tokens=pt,
@@ -99,7 +100,12 @@ async def generate_research_plan_task(
             "planner.completed",
             plan=plan_dict,
             steps_count=len(plan.steps),
+            auto_confirmed=auto_confirm,
         )
+        if auto_confirm:
+            from backend.app.core.job_queue import enqueue_job
+
+            enqueue_job("research_execute", task_id=task_id, user_id=task["user_id"])
 
     except Exception as e:
         failure = classify_failure(e)

@@ -12,6 +12,7 @@ import {
   getTaskEvidence,
   redirectToLogin,
   retryResearchTask,
+  reviseResearchPlan,
   subscribeToEvents,
 } from "@/lib/api";
 import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
@@ -175,6 +176,18 @@ export default function ResearchTaskPage() {
     }
   };
 
+  const revisePlan = async (instruction: string) => {
+    setBusy(true);
+    setLoadError(null);
+    try {
+      setTask(await reviseResearchPlan(taskId, instruction));
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : "研究计划修改失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const retry = async () => {
     setBusy(true);
     setLoadError(null);
@@ -256,7 +269,7 @@ export default function ResearchTaskPage() {
 
             {task.status === "awaiting_confirmation" && task.plan && (
               <div id="plan-review">
-                <PlanEditor plan={task.plan} busy={busy} onConfirm={submitPlan} />
+                <PlanEditor plan={task.plan} busy={busy} onConfirm={submitPlan} onRevise={revisePlan} />
               </div>
             )}
 
@@ -279,7 +292,7 @@ export default function ResearchTaskPage() {
                     >
                       {editingFailedPlan ? "收起计划" : "修改计划后重新执行"}
                     </button>
-                    {editingFailedPlan && <PlanEditor plan={task.plan} busy={busy} onConfirm={submitPlan} />}
+                    {editingFailedPlan && <PlanEditor plan={task.plan} busy={busy} onConfirm={submitPlan} onRevise={revisePlan} />}
                   </div>
                 )}
               </>

@@ -34,6 +34,7 @@ def create_task(
     researcher_model: str = "deepseek-v4-flash",
     reporter_model: str = "deepseek-v4-flash",
     pricing_version: str = "",
+    auto_confirm_plan: bool = False,
 ) -> dict:
     now = datetime.now().isoformat()
     conn = get_connection()
@@ -43,9 +44,9 @@ def create_task(
             knowledge_enabled, knowledge_document_ids_json,
             workspace_id, project_id, budget_profile, max_steps,
             max_search_calls_per_step, max_crawl_pages_per_step, max_tokens_budget,
-            search_depth, planner_model, researcher_model, reporter_model, pricing_version,
+            search_depth, planner_model, researcher_model, reporter_model, pricing_version, auto_confirm_plan,
             created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, 'coordinating', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             task_id,
             user_id,
@@ -67,6 +68,7 @@ def create_task(
             researcher_model,
             reporter_model,
             pricing_version,
+            1 if auto_confirm_plan else 0,
             now,
             now,
         ),
@@ -201,6 +203,32 @@ def list_steps(task_id: str, user_id: str | None = None) -> list[dict]:
         ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def replace_steps(task_id: str, steps: list[dict], user_id: str | None = None) -> None:
+    """Replace a task plan atomically before research execution starts."""
+    user_id = user_id or _task_user_id(task_id)
+    conn = get_connection()
+    conn.execute("DELETE FROM research_steps WHERE task_id = ? AND user_id = ?", (task_id, user_id))
+    conn.executemany(
+        """INSERT INTO research_steps
+           (step_id, task_id, user_id, step_index, title, description, need_search, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
+        [
+            (
+                f"{task_id}_step_{index}",
+                task_id,
+                user_id,
+                index,
+                step["title"],
+                step.get("description") or "",
+                1 if step.get("need_search", True) else 0,
+            )
+            for index, step in enumerate(steps, 1)
+        ],
+    )
+    conn.commit()
+    conn.close()
 
 
 def save_agent_run(

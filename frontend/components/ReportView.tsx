@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  askReport,
   downloadWithAuth,
   getReportVersion,
   listReportVersions,
@@ -50,6 +51,9 @@ export function ReportView({ report, onExport, onNewResearch }: Props) {
   const [textTokens, setTextTokens] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [asking, setAsking] = useState(false);
 
   const loadVersions = useCallback(async () => {
     setLoadingVersions(true);
@@ -198,6 +202,24 @@ export function ReportView({ report, onExport, onNewResearch }: Props) {
       setError(e instanceof Error ? e.message : "版本详情加载失败");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleAsk = async () => {
+    const value = question.trim();
+    if (value.length < 3) {
+      setError("请输入至少 3 个字符的问题。");
+      return;
+    }
+    setAsking(true);
+    setError(null);
+    try {
+      const result = await askReport(report.task_id, value);
+      setAnswer(result.answer_markdown);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "报告追问失败");
+    } finally {
+      setAsking(false);
     }
   };
 
@@ -377,6 +399,30 @@ export function ReportView({ report, onExport, onNewResearch }: Props) {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--border)] bg-white p-4 sm:p-5" aria-labelledby="report-question-heading">
+        <h2 id="report-question-heading" className="text-base font-semibold text-[var(--ink)]">基于报告追问</h2>
+        <p className="mt-1 text-xs text-[var(--muted)]">回答仅使用当前报告和已记录来源；证据不足时会明确说明。</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) void handleAsk();
+            }}
+            placeholder="例如：这个结论最关键的证据是什么？"
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--border)] px-3 text-sm outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+          />
+          <button type="button" onClick={() => void handleAsk()} disabled={asking} className="min-h-11 rounded-xl bg-[var(--ink)] px-4 text-sm font-medium text-white disabled:opacity-50">
+            {asking ? "回答中..." : "提问"}
+          </button>
+        </div>
+        {answer && (
+          <article className="prose mt-4 max-w-none rounded-xl bg-[var(--surface-muted)] p-4 text-sm prose-p:leading-7 prose-a:text-teal-700">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+          </article>
+        )}
       </section>
 
       <div className="rounded-[2rem] border border-white/70 bg-white/72 p-5 shadow-[0_28px_90px_rgba(15,23,42,0.10)] backdrop-blur-2xl sm:p-8">

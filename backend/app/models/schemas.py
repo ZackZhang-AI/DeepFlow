@@ -46,6 +46,7 @@ class CreateResearchRequest(BaseModel):
     knowledge_document_ids: list[str] = Field(default_factory=list)
     workspace_id: Optional[str] = None
     project_id: Optional[str] = None
+    auto_confirm_plan: bool = False
 
 
 class TaskBudget(BaseModel):
@@ -127,6 +128,10 @@ class ConfirmPlanRequest(BaseModel):
     modified_steps: Optional[list[dict]] = Field(default=None, description="修改后的步骤")
 
 
+class RevisePlanRequest(BaseModel):
+    instruction: str = Field(..., min_length=3, max_length=500)
+
+
 class AgentRunResponse(BaseModel):
     """Agent 执行日志。"""
     run_id: str
@@ -178,6 +183,10 @@ class RewriteRequest(BaseModel):
     """报告重写请求"""
     section: str = Field(default="", description="要重写的报告部分")
     instruction: str = Field(..., description="重写指令")
+
+
+class ReportQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=3, max_length=500)
 
 
 class KnowledgeDocumentRequest(BaseModel):

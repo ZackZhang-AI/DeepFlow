@@ -182,6 +182,7 @@ export async function createResearch(
   scope?: { workspaceId?: string; projectId?: string },
   budgetProfile: BudgetProfile = "fast",
   knowledge?: { enabled: boolean; documentIds: string[] },
+  autoConfirmPlan = false,
 ): Promise<ResearchTask> {
   return authJson<ResearchTask>(
     "/api/research-tasks",
@@ -199,6 +200,7 @@ export async function createResearch(
         budget_profile: budgetProfile,
         knowledge_enabled: knowledge?.enabled ?? false,
         knowledge_document_ids: knowledge?.documentIds ?? [],
+        auto_confirm_plan: autoConfirmPlan,
       }),
     },
     "创建研究失败",
@@ -258,6 +260,14 @@ export async function confirmPlan(
   });
 }
 
+export async function reviseResearchPlan(taskId: string, instruction: string) {
+  return authJson<ResearchTask>(`/api/research-tasks/${taskId}/revise-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instruction }),
+  }, "研究计划修改失败");
+}
+
 export async function saveReport(taskId: string, contentMarkdown: string, changeNote = "手动编辑") {
   return authJson(`/api/reports/${taskId}`, {
     method: "PATCH",
@@ -272,6 +282,18 @@ export async function rewriteReport(taskId: string, section: string, instruction
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ section, instruction }),
   });
+}
+
+export async function askReport(taskId: string, question: string) {
+  return authJson<{ answer_markdown: string; sources: string[]; tokens: number }>(
+    `/api/reports/${taskId}/ask`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    },
+    "报告追问失败",
+  );
 }
 
 export async function listReportVersions(taskId: string) {

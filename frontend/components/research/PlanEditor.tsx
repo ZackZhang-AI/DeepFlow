@@ -8,6 +8,7 @@ interface PlanEditorProps {
   plan: ResearchPlan;
   busy: boolean;
   onConfirm: (steps: ResearchStep[]) => Promise<void>;
+  onRevise?: (instruction: string) => Promise<void>;
 }
 
 interface EditableStep extends ResearchStep {
@@ -27,12 +28,13 @@ function createStep(): EditableStep {
   };
 }
 
-export function PlanEditor({ plan, busy, onConfirm }: PlanEditorProps) {
+export function PlanEditor({ plan, busy, onConfirm, onRevise }: PlanEditorProps) {
   const [steps, setSteps] = useState<EditableStep[]>(() => plan.steps.map((step, index) => ({
     ...step,
     uiId: `plan-step-${index}`,
   })));
   const [submitted, setSubmitted] = useState(false);
+  const [revisionInstruction, setRevisionInstruction] = useState("");
 
   const invalidIndexes = useMemo(
     () => steps.flatMap((step, index) => step.title.trim() && step.description.trim() ? [] : [index]),
@@ -116,6 +118,30 @@ export function PlanEditor({ plan, busy, onConfirm }: PlanEditorProps) {
           );
         })}
       </div>
+
+      {onRevise && (
+        <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+          <label className="text-sm font-medium text-slate-700" htmlFor="plan-revision-instruction">用一句话修改计划</label>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input
+              id="plan-revision-instruction"
+              value={revisionInstruction}
+              onChange={(event) => setRevisionInstruction(event.target.value)}
+              placeholder="例如：增加用户访谈证据，删去投资分析"
+              className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-white px-3 text-sm outline-none focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+            />
+            <Button
+              variant="secondary"
+              size="md"
+              disabled={busy || revisionInstruction.trim().length < 3}
+              onClick={() => void onRevise(revisionInstruction.trim())}
+            >
+              重新规划
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-[var(--muted)]">重新规划会调用一次 Planner，并保留当前预算上限。</p>
+        </div>
+      )}
 
       {submitted && steps.length === 0 && <p className="mt-3 text-sm text-red-600">研究计划至少需要一个步骤。</p>}
       {submitted && invalidIndexes.length > 0 && <p className="mt-3 text-sm text-red-600">请补齐每个步骤的标题和说明。</p>}

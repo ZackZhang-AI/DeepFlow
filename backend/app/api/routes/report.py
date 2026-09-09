@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from backend.app.models.schemas import ReportResponse, RewriteRequest, SaveReportRequest
+from backend.app.models.schemas import ReportQuestionRequest, ReportResponse, RewriteRequest, SaveReportRequest
 from backend.app.core.auth import require_login
 from backend.app.core.access import require_report_version_access, require_task_access
 from backend.app.core.rate_limit import check_rate_limit
@@ -21,6 +21,7 @@ from backend.app.repositories.artifact import (
 )
 from backend.app.repositories.research import (
     get_task,
+    list_steps,
     update_task,
 )
 
@@ -203,6 +204,61 @@ async def rewrite_report_section(task_id: str, req: RewriteRequest, user: dict =
         "report_markdown": rewritten,
         "tokens": pt + ct,
     }
+
+
+@router.post("/{task_id}/ask")
+async def ask_report(task_id: str, req: ReportQuestionRequest, user: dict = Depends(require_login)):
+    """Answer a follow-up using only the completed report and its persisted evidence."""
+    check_rate_limit("artifacts.generate", user["user_id"], artifact_rate_limit())
+    task = require_task_access(task_id, user["user_id"])
+    report = task.get("report_markdown") or ""
+    if task.get("status") != "completed" or not report:
+        raise HTTPException(status_code=409, detail="研究报告尚未完成")
+
+    import json
+    from cli.agents.base import LLMProvider
+    from cli.agents.reporter import _remove_unrecorded_links
+    from cli.config import Config
+    from cli.pricing import estimate_cost_rmb
+
+    source_lines: list[str] = []
+    allowed_urls: set[str] = set()
+    for step in list_steps(task_id, user_id=task["user_id"]):
+        for reference in json.loads(step.get("sources_json") or "[]"):
+            url = str(reference.get("url") or "")
+            if not url or url in allowed_urls:
+                continue
+            allowed_urls.add(url)
+            source_lines.append(
+                f"- {reference.get('title') or url}: {url}\n  {str(reference.get('snippet') or '')[:500]}"
+            )
+
+    answer, pt, ct = await LLMProvider.generate_text(
+        model=task.get("reporter_model") or Config.REPORTER_MODEL,
+        system_prompt=(
+            "你是研究报告问答助手。只能根据给定报告和已记录来源回答；"
+            "不得补充外部事实或编造链接。证据不足时直接说明不足。"
+        ),
+        user_message=(
+            f"## 用户问题\n{req.question}\n\n"
+            f"## 已记录来源\n{chr(10).join(source_lines) or '无'}\n\n"
+            f"## 研究报告\n{report[:24000]}"
+        ),
+        temperature=0.1,
+        max_tokens=1200,
+    )
+    answer = _remove_unrecorded_links(answer, allowed_urls)
+    update_task(
+        task_id,
+        owner_user_id=task["user_id"],
+        prompt_tokens=int(task.get("prompt_tokens") or 0) + pt,
+        completion_tokens=int(task.get("completion_tokens") or 0) + ct,
+        tokens_used=int(task.get("tokens_used") or 0) + pt + ct,
+        cost_rmb=float(task.get("cost_rmb") or 0)
+        + estimate_cost_rmb(task.get("reporter_model") or Config.REPORTER_MODEL, pt, ct),
+    )
+    cited = [url for url in allowed_urls if url in answer]
+    return {"answer_markdown": answer, "sources": cited, "tokens": pt + ct}
 
 
 def _safe_filename(value: str) -> str:

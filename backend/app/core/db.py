@@ -78,6 +78,7 @@ def init_db() -> None:
             clarification_json TEXT DEFAULT '[]',
             clarification_round INTEGER DEFAULT 0,
             clarification_history_json TEXT DEFAULT '[]',
+            auto_confirm_plan INTEGER DEFAULT 0,
             search_domains_json TEXT DEFAULT '[]',
             recency_days INTEGER,
             knowledge_enabled INTEGER DEFAULT 0,
@@ -341,6 +342,7 @@ def init_db() -> None:
     _ensure_column(conn, "research_tasks", "clarification_json", "TEXT DEFAULT '[]'")
     _ensure_column(conn, "research_tasks", "clarification_round", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "clarification_history_json", "TEXT DEFAULT '[]'")
+    _ensure_column(conn, "research_tasks", "auto_confirm_plan", "INTEGER DEFAULT 0")
     _ensure_column(conn, "research_tasks", "search_domains_json", "TEXT DEFAULT '[]'")
     _ensure_column(conn, "research_tasks", "recency_days", "INTEGER")
     _ensure_column(conn, "research_tasks", "user_id", f"TEXT DEFAULT '{LOCAL_DEFAULT_USER_ID}'")

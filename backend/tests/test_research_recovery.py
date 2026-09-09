@@ -236,6 +236,81 @@ def test_clarification_questions_progress_without_repeating():
     assert len(second) <= 2
 
 
+def test_plan_revision_replaces_steps_and_keeps_budget(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.api.routes.research import revise_plan
+    from backend.app.models.schemas import RevisePlanRequest
+    from cli.models import ResearchPlan, ResearchStep
+
+    task = db.create_task(
+        "task_revise_plan",
+        "AI 产品研究",
+        user_id=db.LOCAL_DEFAULT_USER_ID,
+        max_steps=3,
+    )
+    original = ResearchPlan(
+        title="原计划",
+        steps=[ResearchStep(title="旧步骤", description="旧内容", need_search=True, step_type="research")],
+    )
+    db.update_task(task["task_id"], status="awaiting_confirmation", plan_json=original.model_dump_json())
+    db.save_step(task["task_id"], 1, "旧步骤", "旧内容")
+
+    async def fake_generate_plan(**_kwargs):
+        return (
+            ResearchPlan(
+                title="新计划",
+                steps=[ResearchStep(title="用户证据", description="补充访谈", need_search=True, step_type="research")],
+            ),
+            10,
+            20,
+        )
+
+    monkeypatch.setattr("cli.agents.planner.generate_plan", fake_generate_plan)
+    response = asyncio.run(
+        revise_plan(
+            task["task_id"],
+            RevisePlanRequest(instruction="增加用户证据"),
+            user={"user_id": db.LOCAL_DEFAULT_USER_ID},
+        )
+    )
+    assert response.plan and response.plan["steps"][0]["title"] == "用户证据"
+    assert db.list_steps(task["task_id"])[0]["title"] == "用户证据"
+    assert response.budget.max_steps == 3
+
+
+def test_report_follow_up_filters_unrecorded_links(tmp_path, monkeypatch):
+    _use_temp_db(tmp_path, monkeypatch)
+    from backend.app.api.routes.report import ask_report
+    from backend.app.models.schemas import ReportQuestionRequest
+
+    task = db.create_task("task_ask", "报告追问", user_id=db.LOCAL_DEFAULT_USER_ID)
+    db.update_task(task["task_id"], status="completed", report_markdown="# 报告\n\n已有结论")
+    step_id = db.save_step(task["task_id"], 1, "证据", "核对证据")
+    db.update_step(
+        step_id,
+        sources_json=[{"title": "来源", "url": "https://example.com/source", "source_type": "web"}],
+    )
+
+    async def fake_generate_text(**_kwargs):
+        return (
+            "结论来自 [来源](https://example.com/source)，不是 [虚构](https://invalid.example/fake)。",
+            12,
+            8,
+        )
+
+    monkeypatch.setattr("cli.agents.base.LLMProvider.generate_text", fake_generate_text)
+    result = asyncio.run(
+        ask_report(
+            task["task_id"],
+            ReportQuestionRequest(question="关键证据是什么？"),
+            user={"user_id": db.LOCAL_DEFAULT_USER_ID},
+        )
+    )
+    assert "https://example.com/source" in result["answer_markdown"]
+    assert "invalid.example" not in result["answer_markdown"]
+    assert result["tokens"] == 20
+
+
 def test_create_research_validates_and_returns_selected_knowledge(tmp_path, monkeypatch):
     _use_temp_db(tmp_path, monkeypatch)
     from backend.app.api.routes import research as research_routes

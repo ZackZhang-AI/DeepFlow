@@ -14,6 +14,7 @@ from backend.app.models.schemas import (
     CreateResearchRequest,
     ResearchTaskResponse,
     ConfirmPlanRequest,
+    RevisePlanRequest,
     UsageSummary,
 )
 from backend.app.repositories.research import (
@@ -21,6 +22,7 @@ from backend.app.repositories.research import (
     get_task,
     list_agent_runs,
     list_steps,
+    replace_steps,
     list_tasks,
     get_usage_summary,
     update_task,
@@ -91,6 +93,7 @@ async def create_research_task(
         researcher_model=Config.RESEARCHER_MODEL,
         reporter_model=reporter_model,
         pricing_version=PRICING_VERSION,
+        auto_confirm_plan=req.auto_confirm_plan,
     )
 
     clarification_questions = _build_clarification_questions(req.topic)
@@ -275,6 +278,51 @@ async def confirm_plan(task_id: str, req: ConfirmPlanRequest, user: dict = Depen
         return {"status": "edited", "task_id": task_id, "steps_count": len(plan.steps)}
     else:
         raise HTTPException(status_code=400, detail=f"无效的 action: {req.action}")
+
+
+@router.post("/{task_id}/revise-plan", response_model=ResearchTaskResponse)
+async def revise_plan(task_id: str, req: RevisePlanRequest, user: dict = Depends(require_login)):
+    """Revise an existing plan from one explicit natural-language instruction."""
+    task = require_task_access(task_id, user["user_id"], write=True)
+    if task["status"] not in ("awaiting_confirmation", "failed") or not task.get("plan_json"):
+        raise HTTPException(status_code=409, detail="当前任务没有可修改的研究计划")
+    check_rate_limit("research.plan_revision", user["user_id"], research_task_rate_limit())
+    from cli.agents.planner import generate_plan
+
+    current_plan = json.loads(task["plan_json"])
+    budget = budget_from_task(task)
+    revised, pt, ct = await generate_plan(
+        topic=task["topic"],
+        locale=task["locale"],
+        max_steps=budget.max_steps,
+        context=(
+            "当前计划：\n"
+            + json.dumps(current_plan, ensure_ascii=False)
+            + "\n用户修改要求：\n"
+            + req.instruction
+            + "\n请在保留合理步骤的基础上修改计划。"
+        ),
+        model_override=task.get("planner_model") or Config.PLANNER_MODEL,
+    )
+    if not revised.steps:
+        raise HTTPException(status_code=422, detail="修改后的计划没有有效步骤")
+    revised.steps = revised.steps[: budget.max_steps]
+    replace_steps(
+        task_id,
+        [step.model_dump() for step in revised.steps],
+        user_id=task["user_id"],
+    )
+    updated = update_task(
+        task_id,
+        owner_user_id=task["user_id"],
+        status="awaiting_confirmation",
+        plan_json=json.dumps(revised.model_dump(), ensure_ascii=False),
+        total_steps=len(revised.steps),
+        prompt_tokens=int(task.get("prompt_tokens") or 0) + pt,
+        completion_tokens=int(task.get("completion_tokens") or 0) + ct,
+        tokens_used=int(task.get("tokens_used") or 0) + pt + ct,
+    )
+    return _task_response(updated)
 
 
 @router.post("/{task_id}/retry")
